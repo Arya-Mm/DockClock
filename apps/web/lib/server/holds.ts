@@ -79,6 +79,7 @@ export async function reauthorizeHold(loadId: string, nowMs = Date.now()) {
   if (load.reauthCount >= 1) throw new DomainError("reauth_not_allowed", "already reauthorized once; replace from vault (M3)");
   const authId = load.authorizationId, cents = load.holdCents;
   const r = await recorded<Authorization>({ loadId, operation: "REAUTHORIZE", requestId: paypalRequestId(loadId, "REAUTHORIZE", authId), amountCents: cents }, () => reauthorize(loadId, authId, cents));
-  await prisma.load.update({ where: { id: loadId }, data: { authorizationId: r.data.id, lastAuthorizedAt: new Date(nowMs), reauthCount: { increment: 1 } } });
+  // Replay: the stored op already updated the load; incrementing again would weaken the one-reauth gate (M3).
+  if (!r.replayed) await prisma.load.updateMany({ where: { id: loadId, authorizationId: authId }, data: { authorizationId: r.data.id, lastAuthorizedAt: new Date(nowMs), reauthCount: { increment: 1 } } });
   return { previousAuthorizationId: authId, authorizationId: r.data.id, debugId: r.debugId, replayed: r.replayed };
 }

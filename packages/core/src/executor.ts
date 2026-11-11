@@ -48,8 +48,9 @@ export function nextSteps(plan: SettlementPlan, auth: AuthState, outcome: PayPal
     }
     case "CAPTURE_COMPLETED": {
       const s: Step[] = [];
-      if (plan.driverPayoutCents > 0) s.push({ do: "PAYOUT_CARRIER", cents: plan.driverPayoutCents }, { do: "WAIT_FOR_WEBHOOK", event: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" });
+      // Invoice before the payout wait: runSteps stops at WAIT_FOR_WEBHOOK, so anything after it never ran.
       if (plan.carrierInvoiceCents > 0) s.push({ do: "INVOICE_CARRIER", cents: plan.carrierInvoiceCents });
+      if (plan.driverPayoutCents > 0) s.push({ do: "PAYOUT_CARRIER", cents: plan.driverPayoutCents }, { do: "WAIT_FOR_WEBHOOK", event: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" });
       return s.length ? s : [{ do: "DONE" }];
     }
     case "CAPTURE_PENDING":

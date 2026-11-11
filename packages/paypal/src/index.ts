@@ -67,7 +67,8 @@ export async function call<T>(method: "GET" | "POST" | "PATCH", path: string, bo
   });
   const debugId = res.headers.get("paypal-debug-id");
   const text = await res.text();
-  const data: unknown = text ? JSON.parse(text) : {};
+  let data: unknown = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; } // non-JSON 5xx must still retry
   // Retry 429/5xx with the SAME request id -> PayPal dedupes, so retries are safe. GETs are naturally idempotent.
   if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES && (reqId || method === "GET")) {
     await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));

@@ -92,8 +92,8 @@ async function runStep(loadId: string, step: Step, plan: SettlementPlan, nowMs: 
       const stage = `settle-${authId}`;
       const requestId = paypalRequestId(loadId, "CAPTURE", stage);
       const r = await recorded<Capture>({ loadId, operation: "CAPTURE", requestId, amountCents: step.cents }, () => captureFinal(loadId, authId, step.cents, stage));
-      await prisma.load.update({ where: { id: loadId }, data: { captureId: r.data.id } });
-      if (load.state === "SETTLING") await moveState(loadId, "SETTLING", "CAPTURED");
+      if (load.state === "SETTLING") await moveState(loadId, "SETTLING", "CAPTURED", { captureId: r.data.id });
+      else await prisma.load.update({ where: { id: loadId }, data: { captureId: r.data.id } });
       return { step, status: "DONE", debugId: r.debugId, requestId, paypalId: r.data.id, replayed: r.replayed, note: r.data.status };
     }
     case "INVOICE_SHIPPER":
@@ -101,7 +101,14 @@ async function runStep(loadId: string, step: Step, plan: SettlementPlan, nowMs: 
       const load = await getLoad(loadId);
       const stage = step.do === "INVOICE_SHIPPER" ? "spill" : "carrier";
       const email = step.do === "INVOICE_SHIPPER" ? process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL : load.carrier.verifiedPayeeEmail;
-      if (!email) return { step, status: "SKIPPED", note: "no recipient email configured" };
+      if (!email) {
+        await notify(loadId, "OPS", "MANUAL_REVIEW", `${step.do} not sent: no recipient email configured`);
+        return { step, status: "FAILED", note: "no recipient email configured" };
+      }
+      if (step.do === "INVOICE_CARRIER" && (load.carrier.status === "SUSPENDED" || !load.carrier.payeeVerifiedAt)) {
+        await notify(loadId, "OPS", "BLOCKED", "carrier invoice blocked: payee unverified or carrier suspended (F1)");
+        return { step, status: "BLOCKED", note: "carrier payee unverified or suspended" };
+      }
       const requestId = paypalRequestId(loadId, "INVOICE", `create-${stage}`);
       const r = await recorded<{ id: string }>({ loadId, operation: `INVOICE_${stage.toUpperCase()}`, requestId, amountCents: step.cents }, async () => {
         const inv = await invoiceSpillover(loadId, email, step.cents, stage);

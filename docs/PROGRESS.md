@@ -17,3 +17,9 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
 - Poll fallback E2E: LD-MWBS0IQL payout BS4MCZG4GY9YL (f864221f9369e), status SUCCESS (f91909688dc65).
 - Replay: simulator delivered WH-7Y7254563A4550640-11V2185806837105M twice -> 1 row. Forged -> 401, not stored.
 - Pending: sandbox buyer opens a dispute to verify provide-evidence field names live; run pnpm seed:reauth on Nov 12.
+
+### Phase 2 live dispute + review (2026-11-12)
+- Live sandbox dispute PP-R-BMA-10199009 on capture 5EH33012VJ8618906 (LD-MWBUZNJG), get debug_id f8089366afb6a.
+- First evidence upload: 422 ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE (f291893f7c905). Retry with same request id: DONE (f269350cc4a29); PROOF_OF_FULFILLMENT + dockclock-audit.txt visible on the dispute (f746279058c58). Multipart field names verified live.
+- No CUSTOMER.DISPUTE.* webhook delivered by sandbox; evidence flow started via applyOutcome. Worker now retries failed evidence every 10 min.
+- Review fixes: unprocessed duplicate webhooks re-dispatch; carrier invoice before payout wait; captureId+CAPTURED in one write and SETTLING accepted for capture outcomes; FAILED never overwrites SUCCEEDED op; reauth replay no double increment; carrier invoice gated on verified payee; missing invoice email -> MANUAL_REVIEW; non-JSON 5xx retried; worker tick lock + per-load isolation.

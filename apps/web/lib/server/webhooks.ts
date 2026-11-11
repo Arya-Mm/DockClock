@@ -39,8 +39,11 @@ export async function ingestWebhook(rawBody: string, headers: Headers): Promise<
   try {
     await prisma.webhookEvent.create({ data: { eventId: evt.id, eventType: evt.event_type, resourceId, verified: true, rawBody } });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { status: 200, duplicate: true, eventId: evt.id };
-    throw e;
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
+    // Replay of a stored event: no-op only if it was processed. A crash mid-dispatch leaves processedAt null and
+    // PayPal's retry re-dispatches it (handlers are forward-only, PayPal writes are request-id keyed).
+    const prior = await prisma.webhookEvent.findUnique({ where: { eventId: evt.id }, select: { processedAt: true } });
+    if (prior?.processedAt) return { status: 200, duplicate: true, eventId: evt.id };
   }
   const handled = await dispatch(evt.event_type, evt.resource);
   await prisma.webhookEvent.update({ where: { eventId: evt.id }, data: { processedAt: new Date() } });
@@ -55,7 +58,7 @@ async function loadBy(where: Prisma.LoadWhereInput) {
 export async function onCaptureOutcome(loadId: string, outcome: PayPalOutcome): Promise<StepResult[] | "stale"> {
   const l = await prisma.load.findUnique({ where: { id: loadId }, select: { state: true } });
   // Forward-only: a capture outcome only matters while the load sits in CAPTURED (payout not yet sent).
-  if (!l || (l.state !== "CAPTURED" && l.state !== "INVOICED_SPILLOVER")) return "stale";
+  if (!l || (l.state !== "SETTLING" && l.state !== "CAPTURED" && l.state !== "INVOICED_SPILLOVER")) return "stale";
   if (outcome.type === "CAPTURE_COMPLETED") {
     const paid = await prisma.payPalOp.findFirst({ where: { loadId, operation: "PAYOUT", status: "SUCCEEDED" } });
     if (paid) return "stale";

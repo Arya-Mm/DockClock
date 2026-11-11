@@ -205,3 +205,11 @@ test("request ids: refund and evidence stages are distinct and stable", () => {
   assert.notEqual(paypalRequestId("L1", "REFUND", "dispute"), paypalRequestId("L1", "EVIDENCE", "dispute"));
   assert.notEqual(paypalRequestId("L1", "REFUND", "dispute"), paypalRequestId("L1", "CAPTURE", "dispute"));
 });
+
+import { nextSteps } from "../src/executor";
+test("CAPTURE_COMPLETED issues the carrier invoice before waiting on the payout webhook", () => {
+  const plan = { driverPayoutCents: 5000, carrierInvoiceCents: 1200 } as unknown as Parameters<typeof nextSteps>[0];
+  const auth = {} as Parameters<typeof nextSteps>[1];
+  const steps = nextSteps(plan, auth, { type: "CAPTURE_COMPLETED", captureId: "C1" }).map((s) => s.do);
+  assert.deepEqual(steps, ["INVOICE_CARRIER", "PAYOUT_CARRIER", "WAIT_FOR_WEBHOOK"]);
+});

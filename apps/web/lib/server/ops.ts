@@ -31,8 +31,8 @@ export async function recorded<T>(meta: OpMeta, fn: () => Promise<PayPalResult<T
     return { data: r.data, debugId: r.debugId, requestId: meta.requestId, replayed: false };
   } catch (e) {
     if (e instanceof PayPalError) {
-      await prisma.payPalOp.update({
-        where: { requestId: meta.requestId },
+      await prisma.payPalOp.updateMany({
+        where: { requestId: meta.requestId, status: { not: "SUCCEEDED" } }, // a racing winner's result stays
         data: { status: "FAILED", debugId: e.debugId, httpStatus: e.status, response: (e.body ?? {}) as Prisma.InputJsonValue },
       });
     }
