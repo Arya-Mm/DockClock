@@ -1,0 +1,291 @@
+[
+  {
+    "id": "early-dent",
+    "title": "Early driver + old dent",
+    "story": "Driver arrived 90m early; dent was already on the trailer at gate-in.",
+    "plan": {
+      "loadId": "DEMO-1",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 100,
+      "excludedCarrierMin": 0,
+      "billableMin": 0,
+      "increments": 0,
+      "chargeCents": 0,
+      "captureCents": 0,
+      "releasedCents": 30000,
+      "invoiceCents": 0,
+      "driverPayoutCents": 0,
+      "platformRetainedCents": 0,
+      "carrierInvoiceCents": 0,
+      "lineItems": [],
+      "action": "VOID",
+      "arrivalClass": "EARLY",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T13:32:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM",
+        "DEPARTURE: 2026-11-12T16:40:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM",
+        "Early by 88m — clock starts at appointment, not arrival",
+        "Net dwell 100m − free 120m = 0m → 0×15m @ $16.25 = $0.00",
+        "Shipper owes nothing — VOID hold of $300.00"
+      ]
+    },
+    "steps": [
+      {
+        "do": "VOID"
+      }
+    ],
+    "notes": [
+      "1 pre-existing defect matched one-to-one; 0 billed"
+    ]
+  },
+  {
+    "id": "reefer-spike",
+    "title": "Reefer wait + door-open spike",
+    "story": "3h15m at a cold dock; doors opened once and air hit 11°C for 8 minutes.",
+    "plan": {
+      "loadId": "DEMO-2",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 195,
+      "excludedCarrierMin": 0,
+      "billableMin": 75,
+      "increments": 5,
+      "chargeCents": 8125,
+      "captureCents": 8125,
+      "releasedCents": 21875,
+      "invoiceCents": 0,
+      "driverPayoutCents": 7312,
+      "platformRetainedCents": 813,
+      "carrierInvoiceCents": 0,
+      "lineItems": [],
+      "action": "CAPTURE",
+      "arrivalClass": "ON_TIME",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T15:00:00.000Z from ELD_GEOFENCE",
+        "DEPARTURE: 2026-11-12T18:15:00.000Z from ELD_GEOFENCE",
+        "Net dwell 195m − free 120m = 75m → 5×15m @ $16.25 = $81.25",
+        "Capture $81.25, release $218.75; carrier payout $73.12 after capture COMPLETED"
+      ]
+    },
+    "steps": [
+      {
+        "do": "CAPTURE",
+        "cents": 8125
+      },
+      {
+        "do": "WAIT_FOR_WEBHOOK",
+        "event": "PAYMENT.CAPTURE.COMPLETED"
+      }
+    ],
+    "notes": [
+      "Dock MKT 4.99°C — under 8°C, no penalty"
+    ]
+  },
+  {
+    "id": "overage",
+    "title": "Over the hold: overcapture + invoice",
+    "story": "5h20m wait, facility forklift punctured the doors, carrier was missing two straps.",
+    "plan": {
+      "loadId": "DEMO-3",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 420,
+      "excludedCarrierMin": 0,
+      "billableMin": 300,
+      "increments": 20,
+      "chargeCents": 77500,
+      "captureCents": 34500,
+      "releasedCents": 0,
+      "invoiceCents": 43000,
+      "driverPayoutCents": 26900,
+      "platformRetainedCents": 0,
+      "carrierInvoiceCents": 0,
+      "lineItems": [
+        {
+          "kind": "DAMAGE",
+          "payer": "SHIPPER",
+          "cents": 45000,
+          "description": "New puncture on REAR_DOORS (sev 0.70, conf 0.92)",
+          "evidenceRef": "cam/out-3.jpg"
+        },
+        {
+          "kind": "HARDWARE",
+          "payer": "CARRIER",
+          "cents": 7600,
+          "description": "2× E-track straps missing at gate-out (Channel3 replacement)",
+          "evidenceRef": "channel3:order"
+        }
+      ],
+      "action": "CAPTURE_AND_INVOICE",
+      "arrivalClass": "ON_TIME",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T15:00:00.000Z from ELD_GEOFENCE",
+        "DEPARTURE: 2026-11-12T22:00:00.000Z from ELD_GEOFENCE",
+        "Net dwell 420m − free 120m = 300m → 20×15m @ $16.25 = $325.00",
+        "DAMAGE $450.00 payable by SHIPPER: New puncture on REAR_DOORS (sev 0.70, conf 0.92) [cam/out-3.jpg]",
+        "HARDWARE $76.00 payable by CARRIER: 2× E-track straps missing at gate-out (Channel3 replacement) [channel3:order]",
+        "Overcapture $45.00 within PayPal 115%/$75 limit",
+        "Spillover $430.00 beyond capture ceiling $345.00 → invoice shipper",
+        "Netted $76.00 carrier liabilities against $345.00 earnings",
+        "Capture $345.00, release $0.00; carrier payout $269.00 after capture COMPLETED"
+      ]
+    },
+    "steps": [
+      {
+        "do": "CAPTURE",
+        "cents": 34500
+      },
+      {
+        "do": "INVOICE_SHIPPER",
+        "cents": 43000,
+        "reason": "above capture ceiling"
+      },
+      {
+        "do": "WAIT_FOR_WEBHOOK",
+        "event": "PAYMENT.CAPTURE.COMPLETED"
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "reauth",
+    "title": "Six-day customs delay",
+    "story": "Hold placed at dispatch 6 days ago; the honor period has expired.",
+    "plan": {
+      "loadId": "DEMO-4",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 240,
+      "excludedCarrierMin": 0,
+      "billableMin": 120,
+      "increments": 8,
+      "chargeCents": 13000,
+      "captureCents": 13000,
+      "releasedCents": 17000,
+      "invoiceCents": 0,
+      "driverPayoutCents": 11700,
+      "platformRetainedCents": 1300,
+      "carrierInvoiceCents": 0,
+      "lineItems": [],
+      "action": "CAPTURE",
+      "arrivalClass": "ON_TIME",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T15:00:00.000Z from ELD_GEOFENCE",
+        "DEPARTURE: 2026-11-12T19:00:00.000Z from ELD_GEOFENCE",
+        "Net dwell 240m − free 120m = 120m → 8×15m @ $16.25 = $130.00",
+        "Capture $130.00, release $170.00; carrier payout $117.00 after capture COMPLETED"
+      ]
+    },
+    "steps": [
+      {
+        "do": "REAUTHORIZE"
+      },
+      {
+        "do": "CAPTURE",
+        "cents": 13000
+      },
+      {
+        "do": "WAIT_FOR_WEBHOOK",
+        "event": "PAYMENT.CAPTURE.COMPLETED"
+      }
+    ],
+    "notes": [
+      "Reauthorize → new authorization id → capture"
+    ]
+  },
+  {
+    "id": "spoof",
+    "title": "Spoofed GPS + injected BOL",
+    "story": "GPS jumps 50 km in 2 minutes; the BOL remark tries to instruct the AI.",
+    "plan": {
+      "loadId": "DEMO-5",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 0,
+      "excludedCarrierMin": 0,
+      "billableMin": 0,
+      "increments": 0,
+      "chargeCents": 0,
+      "captureCents": 0,
+      "releasedCents": 0,
+      "invoiceCents": 0,
+      "driverPayoutCents": 0,
+      "platformRetainedCents": 0,
+      "carrierInvoiceCents": 0,
+      "lineItems": [],
+      "action": "HOLD_FOR_REVIEW",
+      "arrivalClass": "UNKNOWN",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T14:00:00.000Z from BOL_AI_EXTRACTED",
+        "DEPARTURE: 2026-11-12T21:00:00.000Z from BOL_AI_EXTRACTED",
+        "HOLD: evidence flags [DOCUMENT_ONLY_EVIDENCE] — no money moves without approval"
+      ]
+    },
+    "steps": [
+      {
+        "do": "MANUAL_REVIEW",
+        "reason": "evidence insufficient"
+      }
+    ],
+    "notes": [
+      "teleport 1779 km/h at 2026-11-12T15:01:00.000Z",
+      "ping gap 29m before entry — arrival time uncertain"
+    ]
+  },
+  {
+    "id": "dispute",
+    "title": "Shipper disputes the charge",
+    "story": "Shipper files a PayPal dispute a week later.",
+    "plan": {
+      "loadId": "DEMO-6",
+      "contractVersionId": "RC-ACME-2026-11-v3",
+      "dwellMin": 208,
+      "excludedCarrierMin": 0,
+      "billableMin": 88,
+      "increments": 6,
+      "chargeCents": 9750,
+      "captureCents": 9750,
+      "releasedCents": 20250,
+      "invoiceCents": 0,
+      "driverPayoutCents": 8775,
+      "platformRetainedCents": 975,
+      "carrierInvoiceCents": 0,
+      "lineItems": [],
+      "action": "CAPTURE",
+      "arrivalClass": "ON_TIME",
+      "audit": [
+        "Contract RC-ACME-2026-11-v3",
+        "ARRIVAL: 2026-11-12T15:02:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM",
+        "DEPARTURE: 2026-11-12T18:30:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM",
+        "Net dwell 208m − free 120m = 88m → 6×15m @ $16.25 = $97.50",
+        "Capture $97.50, release $202.50; carrier payout $87.75 after capture COMPLETED"
+      ]
+    },
+    "steps": [
+      {
+        "do": "SUBMIT_DISPUTE_EVIDENCE",
+        "disputeId": "PP-D-1"
+      },
+      {
+        "do": "NOTIFY",
+        "who": "OPS",
+        "message": "Dispute opened; evidence pack auto-submitted"
+      }
+    ],
+    "notes": [],
+    "evidencePack": {
+      "evidenceType": "PROOF_OF_FULFILLMENT",
+      "notes": "Load DEMO-6 — accessorial charge per signed rate confirmation RC-ACME-2026-11-v3.\nCharged $97.50 (detention 88 billable minutes after 208m dwell; 0m carrier-caused time excluded).\nTime basis: ARRIVAL: 2026-11-12T15:02:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM | DEPARTURE: 2026-11-12T18:30:00.000Z from ELD_GEOFENCE+YARD_GATE_SYSTEM.\nUncaptured hold of $202.50 was released to the payer at settlement.",
+      "documents": [
+        {
+          "name": "rate-confirmation.pdf",
+          "ref": "docs/RC-ACME-2026-11-v3.pdf"
+        },
+        {
+          "name": "gate-log.csv",
+          "ref": "yard/DEMO-6.csv"
+        }
+      ]
+    }
+  }
+]

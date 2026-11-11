@@ -1,0 +1,14 @@
+{
+  "name": "@dockclock/core",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts", "./fixtures/*": "./fixtures/*" },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --import tsx --test test/*.test.ts",
+    "fixtures": "node --import tsx scripts/fixtures.ts"
+  },
+  "dependencies": { "luxon": "^3.7.2" },
+  "devDependencies": { "@types/luxon": "^3.7.6", "@types/node": "^24", "tsx": "^4.20.0", "typescript": "^5.9.3" }
+}

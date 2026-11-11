@@ -1,0 +1,82 @@
+[
+  {
+    "facilityId": "F-PHX-08",
+    "facilityName": "Tolleson Building Supply",
+    "loads": 87,
+    "avgDwellMin": 226,
+    "detentionRate": 0.506,
+    "recoveryRate": 0.579,
+    "capturedUsd": 9100,
+    "quadrant": "REVENUE_LEAK"
+  },
+  {
+    "facilityId": "F-DAL-03",
+    "facilityName": "Mesquite Beverage Plant",
+    "loads": 80,
+    "avgDwellMin": 239,
+    "detentionRate": 0.675,
+    "recoveryRate": 0.792,
+    "capturedUsd": 9012.5,
+    "quadrant": "SLOW_BUT_PAYS"
+  },
+  {
+    "facilityId": "F-NJ-05",
+    "facilityName": "Edison Pharma 3PL",
+    "loads": 76,
+    "avgDwellMin": 99,
+    "detentionRate": 0.237,
+    "recoveryRate": 0.974,
+    "capturedUsd": 601.25,
+    "quadrant": "FAST_AND_FAIR"
+  },
+  {
+    "facilityId": "F-MEM-06",
+    "facilityName": "Memphis Parcel Hub",
+    "loads": 76,
+    "avgDwellMin": 53,
+    "detentionRate": 0.013,
+    "recoveryRate": 0.333,
+    "capturedUsd": 16.25,
+    "quadrant": "FAST_BUT_DISPUTES"
+  },
+  {
+    "facilityId": "F-ATL-02",
+    "facilityName": "Fulton Retail Crossdock",
+    "loads": 83,
+    "avgDwellMin": 137,
+    "detentionRate": 0.41,
+    "recoveryRate": 0.686,
+    "capturedUsd": 4117.5,
+    "quadrant": "FAST_BUT_DISPUTES"
+  },
+  {
+    "facilityId": "F-LAX-04",
+    "facilityName": "Carson Import Terminal",
+    "loads": 77,
+    "avgDwellMin": 164,
+    "detentionRate": 0.442,
+    "recoveryRate": 0.406,
+    "capturedUsd": 5057.5,
+    "quadrant": "FAST_BUT_DISPUTES"
+  },
+  {
+    "facilityId": "F-SEA-07",
+    "facilityName": "Kent Cold Storage",
+    "loads": 82,
+    "avgDwellMin": 183,
+    "detentionRate": 0.72,
+    "recoveryRate": 0.848,
+    "capturedUsd": 7050,
+    "quadrant": "SLOW_BUT_PAYS"
+  },
+  {
+    "facilityId": "F-CHI-01",
+    "facilityName": "Joliet Grocery DC",
+    "loads": 79,
+    "avgDwellMin": 99,
+    "detentionRate": 0.253,
+    "recoveryRate": 0.925,
+    "capturedUsd": 1007.5,
+    "quadrant": "FAST_AND_FAIR"
+  }
+]

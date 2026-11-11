@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: dockclock, POSTGRES_PASSWORD: dockclock, POSTGRES_DB: dockclock }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U dockclock" --health-interval 2s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://dockclock:dockclock@localhost:5432/dockclock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dockclock/db migrate
+      - run: pnpm typecheck
+      - run: pnpm test
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }

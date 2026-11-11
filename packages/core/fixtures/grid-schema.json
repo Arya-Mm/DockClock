@@ -1,0 +1,111 @@
+{
+  "fields": {
+    "loadId": "Unique load/shipment identifier",
+    "facilityId": "Warehouse or terminal id where the truck waited",
+    "facilityName": "Warehouse or terminal name",
+    "carrierName": "Trucking company that hauled the load",
+    "appointmentIso": "Scheduled dock appointment (UTC)",
+    "arrivalClass": "EARLY, ON_TIME, LATE relative to appointment + grace",
+    "action": "Settlement outcome on PayPal: VOID, CAPTURE, CAPTURE_AND_INVOICE, HOLD_FOR_REVIEW",
+    "dwellMin": "Minutes on site counted by the detention clock",
+    "billableMin": "Minutes billed after free time and carrier-caused delay",
+    "chargeUsd": "Total owed by the shipper (detention + shipper line items), USD",
+    "capturedUsd": "Captured from the PayPal authorization hold, USD",
+    "releasedUsd": "Uncaptured hold released back to the shipper, USD",
+    "invoicedUsd": "Billed by PayPal invoice above the capture ceiling, USD",
+    "carrierPayoutUsd": "Paid to the carrier via PayPal Payouts, USD",
+    "carrierOwesUsd": "Carrier liabilities exceeding its earnings, invoiced to the carrier, USD",
+    "platformUsd": "Platform fee retained, USD",
+    "lineItemCount": "Number of damage, seal, cold-chain or hardware line items",
+    "needsReview": "True when evidence was insufficient and money did not move automatically",
+    "claimedUsd": "Amount the carrier claims on paper; for review rows this is revenue at risk, USD",
+    "auditTrail": "Step-by-step deterministic explanation of the settlement",
+    "paypalAuthorizationId": "PayPal authorization id of the hold",
+    "paypalCaptureId": "PayPal capture id"
+  },
+  "columnDefs": [
+    {
+      "field": "loadId",
+      "pinned": "left",
+      "cellRenderer": "agGroupCellRenderer",
+      "filter": "agTextColumnFilter"
+    },
+    {
+      "field": "facilityName",
+      "rowGroup": false,
+      "enableRowGroup": true,
+      "filter": "agSetColumnFilter"
+    },
+    {
+      "field": "carrierName",
+      "enableRowGroup": true,
+      "filter": "agSetColumnFilter"
+    },
+    {
+      "field": "action",
+      "enableRowGroup": true,
+      "cellRenderer": "actionBadgeRenderer",
+      "filter": "agSetColumnFilter"
+    },
+    {
+      "field": "arrivalClass",
+      "enableRowGroup": true
+    },
+    {
+      "field": "dwellMin",
+      "type": "numericColumn",
+      "aggFunc": "avg",
+      "filter": "agNumberColumnFilter"
+    },
+    {
+      "field": "billableMin",
+      "type": "numericColumn",
+      "aggFunc": "sum"
+    },
+    {
+      "field": "chargeUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "capturedUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "releasedUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "invoicedUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "carrierPayoutUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "carrierOwesUsd",
+      "type": "numericColumn",
+      "aggFunc": "sum",
+      "valueFormatter": "usd"
+    },
+    {
+      "field": "needsReview",
+      "cellRenderer": "reviewToggleRenderer",
+      "editable": true
+    },
+    {
+      "field": "paypalCaptureId",
+      "cellRenderer": "paypalLinkRenderer"
+    }
+  ]
+}

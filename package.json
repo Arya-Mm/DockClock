@@ -1,0 +1,25 @@
+{
+  "name": "dockclock",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "dev": "pnpm --filter @dockclock/web dev",
+    "doctor": "tsx --env-file=.env scripts/doctor.ts",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "pnpm --filter @dockclock/db migrate",
+    "db:seed": "pnpm --filter @dockclock/db seed"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3"
+  }
+}

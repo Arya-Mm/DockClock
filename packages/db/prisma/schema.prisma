@@ -1,0 +1,264 @@
+// DockClock data model (docs/PLAN.md §3).
+// Money columns are integer cents. Tables marked APPEND-ONLY are never UPDATEd/DELETEd;
+// a DB trigger in migrations/*_append_only enforces it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LoadState {
+  DISPATCHED
+  HOLD_PENDING
+  HOLD_AUTHORIZED
+  AT_FACILITY
+  DEPARTED
+  SETTLING
+  REVIEW
+  CAPTURED
+  VOIDED
+  INVOICED
+  PAID_OUT
+  DISPUTED
+  CLOSED
+}
+
+enum OfferKind {
+  WAIT_GUARANTEED
+  SLOT_SWAP_WITH_CREDIT
+  RELEASE_TONU
+  PRIORITY_SLOT_PURCHASE
+  PART_PURCHASE
+}
+
+enum OfferStatus {
+  OPEN
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+  SETTLED
+}
+
+enum AgentKind {
+  CARRIER
+  FACILITY
+  SHIPPER_TREASURY
+}
+
+enum Verdict {
+  ALLOWED
+  BLOCKED
+  ESCALATED
+}
+
+enum PayPalOpStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model Facility {
+  id        String   @id
+  name      String
+  ianaZone  String
+  lat       Float
+  lng       Float
+  radiusM   Int
+  synthetic Boolean  @default(true)
+  loads     Load[]
+  createdAt DateTime @default(now())
+}
+
+model CarrierProfile {
+  id                  String    @id
+  name                String
+  usdot               String
+  verifiedPayeeEmail  String
+  payeeEmailChangedAt DateTime?
+  partsCapCents       Int       @default(15000)
+  synthetic           Boolean   @default(true)
+  loads               Load[]
+  createdAt           DateTime  @default(now())
+}
+
+/// C4: version pinned + fingerprinted; both parties confirm.
+model ContractVersion {
+  id               String   @id
+  fingerprint      String   @unique
+  terms            Json
+  shipperConfirmed Boolean  @default(false)
+  carrierConfirmed Boolean  @default(false)
+  loads            Load[]
+  createdAt        DateTime @default(now())
+}
+
+model Load {
+  id                String          @id
+  stopSeq           Int             @default(1) // T13: one settlement per stop
+  facilityId        String
+  facility          Facility        @relation(fields: [facilityId], references: [id])
+  carrierId         String
+  carrier           CarrierProfile  @relation(fields: [carrierId], references: [id])
+  contractVersionId String
+  contractVersion   ContractVersion @relation(fields: [contractVersionId], references: [id])
+  appointmentAt     DateTime
+  state             LoadState       @default(DISPATCHED)
+  holdCents         Int?
+  orderId           String?
+  authorizationId   String?
+  vaultId           String?
+  synthetic         Boolean         @default(true)
+  evidence          EvidenceEvent[]
+  plans             Plan[]
+  paypalOps         PayPalOp[]
+  offers            Offer[]
+  receipts          Receipt[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([facilityId, appointmentAt])
+}
+
+/// APPEND-ONLY
+model EvidenceEvent {
+  id         String    @id @default(cuid())
+  loadId     String
+  load       Load      @relation(fields: [loadId], references: [id])
+  source     String
+  kind       String
+  utcAt      DateTime
+  deviceAt   DateTime? // T15: device clock is evidence only
+  confidence Float
+  citation   String
+  receivedAt DateTime  @default(now())
+
+  @@index([loadId])
+}
+
+/// APPEND-ONLY. Versioned settlement plan; hash over canonical JSON.
+model Plan {
+  id        String   @id @default(cuid())
+  loadId    String
+  load      Load     @relation(fields: [loadId], references: [id])
+  version   Int
+  hash      String
+  body      Json
+  createdAt DateTime @default(now())
+
+  @@unique([loadId, version])
+}
+
+/// One row per PayPal write, inserted BEFORE the HTTP call.
+model PayPalOp {
+  id          String         @id @default(cuid())
+  loadId      String?
+  load        Load?          @relation(fields: [loadId], references: [id])
+  requestId   String         @unique
+  operation   String
+  amountCents Int?
+  status      PayPalOpStatus @default(PENDING)
+  paypalId    String?
+  debugId     String?
+  httpStatus  Int?
+  response    Json?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([loadId])
+}
+
+/// APPEND-ONLY (processedAt set once). eventId unique => duplicates are no-ops (M9).
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  eventId     String    @unique
+  eventType   String
+  resourceId  String?
+  verified    Boolean
+  rawBody     String
+  processedAt DateTime?
+  receivedAt  DateTime  @default(now())
+
+  @@index([resourceId])
+}
+
+model Mandate {
+  id                String        @id
+  agent             AgentKind
+  ownerId           String
+  allowedActions    OfferKind[]
+  counterparties    String[]
+  perActionCapCents Int
+  dailyCapCents     Int
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  actions           AgentAction[]
+  createdAt         DateTime      @default(now())
+}
+
+model Offer {
+  id                String      @id
+  version           Int
+  loadId            String
+  load              Load        @relation(fields: [loadId], references: [id])
+  fromAgent         AgentKind
+  toAgent           AgentKind
+  kind              OfferKind
+  priceCents        Int // engine-set, never LLM (A1)
+  slotDoorId        String?
+  slotStartAt       DateTime?
+  ttlMs             Int
+  expiresAt         DateTime
+  rationale         String // LLM text, display only (A2)
+  contractVersionId String
+  planHash          String
+  status            OfferStatus @default(OPEN)
+  acceptedAt        DateTime?
+  createdAt         DateTime    @default(now())
+
+  @@index([loadId, status])
+}
+
+/// APPEND-ONLY, hash-chained (F5): hash = sha256(prevHash || canonical(row)).
+model AgentAction {
+  seq        Int       @id @default(autoincrement())
+  agent      AgentKind
+  action     String
+  offerId    String?
+  mandateId  String?
+  mandate    Mandate?  @relation(fields: [mandateId], references: [id])
+  verdict    Verdict
+  reasons    String[]
+  promptHash String?
+  payload    Json
+  prevHash   String
+  hash       String    @unique
+  createdAt  DateTime  @default(now())
+
+  @@index([agent, verdict])
+}
+
+model Receipt {
+  id         String   @id @default(cuid())
+  loadId     String
+  load       Load     @relation(fields: [loadId], references: [id])
+  auditHash  String   @unique
+  publicSlug String   @unique
+  body       Json
+  createdAt  DateTime @default(now())
+}
+
+model ReconcileMismatch {
+  id          String   @id @default(cuid())
+  runAt       DateTime
+  paypalTxnId String?
+  loadId      String?
+  kind        String
+  ledgerCents Int?
+  paypalCents Int?
+  createdAt   DateTime @default(now())
+}

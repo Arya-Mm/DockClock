@@ -1,0 +1,242 @@
+[
+  {
+    "facilityId": "F-CHI-01",
+    "facilityName": "Joliet Grocery DC",
+    "arrivalHourLocal": 8,
+    "holdCents": 7500,
+    "predictedP90DwellMin": 178,
+    "predictedP90ChargeCents": 6500,
+    "historicalCoverage": 0.939,
+    "sampleSize": {
+      "facilityBucket": 33,
+      "facility": 79,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 178m (from 33 similar loads, 79 at facility). That bills ≤ $65.00; a $75.00 hold covers it with PayPal overcapture and would have covered 94% of past loads."
+  },
+  {
+    "facilityId": "F-CHI-01",
+    "facilityName": "Joliet Grocery DC",
+    "arrivalHourLocal": 14,
+    "holdCents": 10000,
+    "predictedP90DwellMin": 198,
+    "predictedP90ChargeCents": 9750,
+    "historicalCoverage": 0.913,
+    "sampleSize": {
+      "facilityBucket": 23,
+      "facility": 79,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 198m (from 23 similar loads, 79 at facility). That bills ≤ $97.50; a $100.00 hold covers it with PayPal overcapture and would have covered 91% of past loads."
+  },
+  {
+    "facilityId": "F-ATL-02",
+    "facilityName": "Fulton Retail Crossdock",
+    "arrivalHourLocal": 8,
+    "holdCents": 15000,
+    "predictedP90DwellMin": 263,
+    "predictedP90ChargeCents": 16250,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 27,
+      "facility": 83,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 263m (from 27 similar loads, 83 at facility). That bills ≤ $162.50; a $150.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-ATL-02",
+    "facilityName": "Fulton Retail Crossdock",
+    "arrivalHourLocal": 14,
+    "holdCents": 20000,
+    "predictedP90DwellMin": 303,
+    "predictedP90ChargeCents": 21125,
+    "historicalCoverage": 0.931,
+    "sampleSize": {
+      "facilityBucket": 29,
+      "facility": 83,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 303m (from 29 similar loads, 83 at facility). That bills ≤ $211.25; a $200.00 hold covers it with PayPal overcapture and would have covered 93% of past loads."
+  },
+  {
+    "facilityId": "F-DAL-03",
+    "facilityName": "Mesquite Beverage Plant",
+    "arrivalHourLocal": 8,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 409,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 34,
+      "facility": 80,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 409m (from 34 similar loads, 80 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-DAL-03",
+    "facilityName": "Mesquite Beverage Plant",
+    "arrivalHourLocal": 14,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 444,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 26,
+      "facility": 80,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 444m (from 26 similar loads, 80 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-LAX-04",
+    "facilityName": "Carson Import Terminal",
+    "arrivalHourLocal": 8,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 477,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 32,
+      "facility": 77,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 477m (from 32 similar loads, 77 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-LAX-04",
+    "facilityName": "Carson Import Terminal",
+    "arrivalHourLocal": 14,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 511,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 33,
+      "facility": 77,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 511m (from 33 similar loads, 77 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-NJ-05",
+    "facilityName": "Edison Pharma 3PL",
+    "arrivalHourLocal": 8,
+    "holdCents": 7500,
+    "predictedP90DwellMin": 183,
+    "predictedP90ChargeCents": 8125,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 27,
+      "facility": 76,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 183m (from 27 similar loads, 76 at facility). That bills ≤ $81.25; a $75.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-NJ-05",
+    "facilityName": "Edison Pharma 3PL",
+    "arrivalHourLocal": 14,
+    "holdCents": 7500,
+    "predictedP90DwellMin": 176,
+    "predictedP90ChargeCents": 6500,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 32,
+      "facility": 76,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 176m (from 32 similar loads, 76 at facility). That bills ≤ $65.00; a $75.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-MEM-06",
+    "facilityName": "Memphis Parcel Hub",
+    "arrivalHourLocal": 8,
+    "holdCents": 5000,
+    "predictedP90DwellMin": 137,
+    "predictedP90ChargeCents": 3250,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 30,
+      "facility": 76,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 137m (from 30 similar loads, 76 at facility). That bills ≤ $32.50; a $50.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-MEM-06",
+    "facilityName": "Memphis Parcel Hub",
+    "arrivalHourLocal": 14,
+    "holdCents": 5000,
+    "predictedP90DwellMin": 140,
+    "predictedP90ChargeCents": 3250,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 29,
+      "facility": 76,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 140m (from 29 similar loads, 76 at facility). That bills ≤ $32.50; a $50.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-SEA-07",
+    "facilityName": "Kent Cold Storage",
+    "arrivalHourLocal": 8,
+    "holdCents": 25000,
+    "predictedP90DwellMin": 353,
+    "predictedP90ChargeCents": 26000,
+    "historicalCoverage": 0.906,
+    "sampleSize": {
+      "facilityBucket": 32,
+      "facility": 82,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 353m (from 32 similar loads, 82 at facility). That bills ≤ $260.00; a $250.00 hold covers it with PayPal overcapture and would have covered 91% of past loads."
+  },
+  {
+    "facilityId": "F-SEA-07",
+    "facilityName": "Kent Cold Storage",
+    "arrivalHourLocal": 14,
+    "holdCents": 22500,
+    "predictedP90DwellMin": 334,
+    "predictedP90ChargeCents": 24375,
+    "historicalCoverage": 0.938,
+    "sampleSize": {
+      "facilityBucket": 32,
+      "facility": 82,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 334m (from 32 similar loads, 82 at facility). That bills ≤ $243.75; a $225.00 hold covers it with PayPal overcapture and would have covered 94% of past loads."
+  },
+  {
+    "facilityId": "F-PHX-08",
+    "facilityName": "Tolleson Building Supply",
+    "arrivalHourLocal": 8,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 474,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 35,
+      "facility": 87,
+      "network": 640
+    },
+    "explanation": "9 in 10 AM arrivals at this facility finish within 474m (from 35 similar loads, 87 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  },
+  {
+    "facilityId": "F-PHX-08",
+    "facilityName": "Tolleson Building Supply",
+    "arrivalHourLocal": 14,
+    "holdCents": 27500,
+    "predictedP90DwellMin": 638,
+    "predictedP90ChargeCents": 30000,
+    "historicalCoverage": 1,
+    "sampleSize": {
+      "facilityBucket": 38,
+      "facility": 87,
+      "network": 640
+    },
+    "explanation": "9 in 10 PM arrivals at this facility finish within 638m (from 38 similar loads, 87 at facility). That bills ≤ $300.00; a $275.00 hold covers it with PayPal overcapture and would have covered 100% of past loads."
+  }
+]

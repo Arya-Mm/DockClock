@@ -1,0 +1,20 @@
+{
+  "name": "@dockclock/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --import tsx --test test/*.test.ts",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx src/seed.ts"
+  },
+  "prisma": { "schema": "prisma/schema.prisma" },
+  "dependencies": { "@prisma/client": "^6.19.0", "@dockclock/core": "workspace:*" },
+  "devDependencies": { "prisma": "^6.19.0", "tsx": "^4.20.0", "typescript": "^5.9.3", "@types/node": "^24" }
+}
