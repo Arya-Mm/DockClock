@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "worker": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/index.ts",
+    "worker:once": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/index.ts --once",
+    "reconcile": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/reconcile.ts",
+    "seed:reauth": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/seed-reauth-hold.ts"
   },
   "dependencies": {
     "@dockclock/agents": "workspace:*",
@@ -33,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

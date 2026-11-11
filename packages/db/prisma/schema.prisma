@@ -82,6 +82,8 @@ model CarrierProfile {
   usdot               String
   verifiedPayeeEmail  String
   payeeEmailChangedAt DateTime?
+  payeeVerifiedAt     DateTime?
+  status              String    @default("ACTIVE") // ACTIVE | SUSPENDED (payeeGuard)
   partsCapCents       Int       @default(15000)
   synthetic           Boolean   @default(true)
   loads               Load[]
@@ -117,6 +119,9 @@ model Load {
   authorizedAt      DateTime?
   lastAuthorizedAt  DateTime?
   reauthCount       Int             @default(0)
+  captureId         String?
+  payoutBatchId     String?
+  disputeId         String?
   synthetic         Boolean         @default(true)
   evidence          EvidenceEvent[]
   plans             Plan[]
@@ -266,4 +271,16 @@ model ReconcileMismatch {
   ledgerCents Int?
   paypalCents Int?
   createdAt   DateTime @default(now())
+}
+
+/// Ops / carrier / shipper notices from executor NOTIFY and MANUAL_REVIEW steps.
+model Notification {
+  id        String   @id @default(cuid())
+  loadId    String?
+  who       String // CARRIER | SHIPPER | OPS
+  kind      String // NOTIFY | MANUAL_REVIEW | BLOCKED
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([loadId])
 }

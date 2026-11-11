@@ -131,12 +131,12 @@ export function authorizeOrder(loadId: string, orderId: string) {
 }
 
 /** Repeat loads: no buyer redirect. Handles both "auth returned inline" and "needs /authorize". */
-export async function createHoldOrderVaulted(loadId: string, holdCents: number, description: string, vaultId: string) {
+export async function createHoldOrderVaulted(loadId: string, holdCents: number, description: string, vaultId: string, stage = "vaulted") {
   const order = await call<Order>("POST", "/v2/checkout/orders", {
     intent: "AUTHORIZE",
     purchase_units: [unit(loadId, holdCents, description)],
     payment_source: { paypal: { vault_id: vaultId } },
-  }, requestId(loadId, "ORDER", "vaulted"));
+  }, requestId(loadId, "ORDER", stage));
   if (authorizationFrom(order.data)) return { order, authorize: null };
   const authorize = await authorizeOrder(loadId, order.data.id);
   return { order, authorize };
@@ -187,14 +187,15 @@ export function payoutCarrier(loadId: string, carrierEmail: string, cents: numbe
 
 // --- Spillover invoice -------------------------------------------------------------
 
-export async function invoiceSpillover(loadId: string, recipientEmail: string, cents: number) {
+/** stage "spill" = shipper overage above the hold; "carrier" = carrier liabilities beyond its payout. */
+export async function invoiceSpillover(loadId: string, recipientEmail: string, cents: number, stage = "spill") {
   const create = await call<{ id?: string; href?: string }>("POST", "/v2/invoicing/invoices", {
-    detail: { currency_code: "USD", invoice_number: `${loadId}-SPILL`, note: "Detention above pre-authorized hold" },
+    detail: { currency_code: "USD", invoice_number: `${loadId}-${stage.toUpperCase()}`, note: stage === "spill" ? "Detention above pre-authorized hold" : "Carrier liabilities on this load (damage, seals, missing equipment)" },
     primary_recipients: [{ billing_info: { email_address: recipientEmail } }],
-    items: [{ name: `Detention overage — load ${loadId}`, quantity: "1", unit_amount: { currency_code: "USD", value: centsToValue(cents) } }],
-  }, requestId(loadId, "INVOICE", "create"));
+    items: [{ name: stage === "spill" ? `Detention overage — load ${loadId}` : `Carrier liabilities — load ${loadId}`, quantity: "1", unit_amount: { currency_code: "USD", value: centsToValue(cents) } }],
+  }, requestId(loadId, "INVOICE", `create-${stage}`));
   const id = create.data.id ?? String(create.data.href ?? "").split("/").pop() ?? "";
-  const send = await call<unknown>("POST", `/v2/invoicing/invoices/${id}/send`, { send_to_recipient: true }, requestId(loadId, "INVOICE", "send"));
+  const send = await call<unknown>("POST", `/v2/invoicing/invoices/${id}/send`, { send_to_recipient: true }, requestId(loadId, "INVOICE", `send-${stage}`));
   return { id, create, send };
 }
 
@@ -247,3 +248,52 @@ export async function provideDisputeEvidence(disputeId: string, pack: { evidence
   if (!res.ok) throw new PayPalError(res.status, debugId, text, `provide-evidence -> ${res.status} (debug_id=${debugId})`);
   return { data: (text ? JSON.parse(text) : {}) as unknown, debugId, status: res.status, requestId: null };
 }
+
+// --- Phase 2: refunds, payouts status, reporting, disputes, webhooks ---------------
+
+/** Doc: developer.paypal.com/api/payments/v2/captures-refund (empty body = full refund). */
+export function refundCapture(loadId: string, captureId: string, cents: number | null, stage = "dispute") {
+  return call<{ id: string; status: string; amount?: Money }>("POST", `/v2/payments/captures/${captureId}/refund`, {
+    ...(cents != null ? { amount: { currency_code: "USD", value: centsToValue(cents) } } : {}),
+    invoice_id: `${loadId}-refund-${stage}`.slice(0, 127),
+    note_to_payer: "Refund per DockClock dispute outcome",
+  }, requestId(loadId, "REFUND", stage));
+}
+
+export interface PayoutBatchDetail {
+  batch_header?: { payout_batch_id?: string; batch_status?: string };
+  items?: Array<{ payout_item_id?: string; transaction_status?: string; payout_item?: { sender_item_id?: string } }>;
+}
+/** Doc: developer.paypal.com/api/payments.payouts-batch/v1/payouts-get */
+export function getPayoutBatch(batchId: string) { return call<PayoutBatchDetail>("GET", `/v1/payments/payouts/${batchId}`); }
+
+export interface TxnDetail { transaction_info?: { transaction_id?: string; transaction_event_code?: string; transaction_amount?: Money; invoice_id?: string; custom_field?: string } }
+/** Doc: developer.paypal.com/api/transaction-search/v1/search-get (range max 31 days, data lags up to 3h). */
+export function searchTransactions(startIso: string, endIso: string, page = 1) {
+  const q = new URLSearchParams({ start_date: startIso, end_date: endIso, fields: "transaction_info", page_size: "500", page: String(page) });
+  return call<{ transaction_details?: TxnDetail[]; total_pages?: number }>("GET", `/v1/reporting/transactions?${q}`);
+}
+
+/** Doc: developer.paypal.com/api/customer-disputes/v1/disputes-list */
+export function listDisputes() { return call<{ items?: Array<{ dispute_id: string; status?: string; reason?: string }> }>("GET", "/v1/customer/disputes?page_size=50"); }
+export function getDispute(id: string) {
+  return call<{ dispute_id: string; status?: string; disputed_transactions?: Array<{ seller_transaction_id?: string }>; dispute_outcome?: { outcome_code?: string } }>("GET", `/v1/customer/disputes/${id}`);
+}
+
+/** Doc: developer.paypal.com/api/webhooks/v1/webhooks-post */
+export function createWebhook(url: string, eventTypes: string[]) {
+  return call<{ id: string; url: string }>("POST", "/v1/notifications/webhooks", { url, event_types: eventTypes.map((name) => ({ name })) });
+}
+export function listWebhooks() { return call<{ webhooks?: Array<{ id: string; url: string }> }>("GET", "/v1/notifications/webhooks"); }
+/** Doc: developer.paypal.com/api/webhooks/v1/simulate-event-post */
+export function simulateWebhook(webhookId: string, eventType: string) {
+  return call<{ id: string; event_type: string }>("POST", "/v1/notifications/simulate-event", { webhook_id: webhookId, event_type: eventType });
+}
+
+/** Events DockClock subscribes to (core README). Payments v2 declines are PAYMENT.CAPTURE.DECLINED; DENIED kept for v1. */
+export const WEBHOOK_EVENTS = [
+  "PAYMENT.AUTHORIZATION.CREATED", "PAYMENT.AUTHORIZATION.VOIDED",
+  "PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.PENDING", "PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.DECLINED", "PAYMENT.CAPTURE.REFUNDED",
+  "PAYMENT.PAYOUTS-ITEM.SUCCEEDED", "PAYMENT.PAYOUTS-ITEM.UNCLAIMED", "PAYMENT.PAYOUTS-ITEM.FAILED", "PAYMENT.PAYOUTS-ITEM.BLOCKED", "PAYMENT.PAYOUTS-ITEM.RETURNED",
+  "VAULT.PAYMENT-TOKEN.CREATED", "CUSTOMER.DISPUTE.CREATED", "CUSTOMER.DISPUTE.RESOLVED", "INVOICING.INVOICE.PAID",
+] as const;

@@ -25,11 +25,17 @@ async function main() {
     await prisma.facility.upsert({ where: { id: f.id }, update: {}, create: { id: f.id, name: f.name, ianaZone: f.tz, lat, lng, radiusM: 300 } });
   }
   const carriers = [...new Set(ledger.map((r) => r.carrierName))];
+  // The alphabetically first carrier is the live demo payee: its verified email is the sandbox personal account,
+  // so payouts land somewhere visible. Others get example.com addresses (payouts would go UNCLAIMED, M11).
+  const demoId = `C-${slug([...carriers].sort()[0] ?? "")}`;
+  const demoEmail = process.env.PAYPAL_SANDBOX_PERSONAL_EMAIL;
   for (const name of carriers) {
     const id = `C-${slug(name)}`;
+    const email = id === demoId && demoEmail ? demoEmail : `${slug(name)}@carrier.example.com`;
+    const verified = new Date("2026-10-01T00:00:00Z");
     await prisma.carrierProfile.upsert({
-      where: { id }, update: {},
-      create: { id, name, usdot: String(1000000 + carriers.indexOf(name)), verifiedPayeeEmail: `${slug(name)}@carrier.example.com` },
+      where: { id }, update: { verifiedPayeeEmail: email, payeeVerifiedAt: verified },
+      create: { id, name, usdot: String(1000000 + carriers.indexOf(name)), verifiedPayeeEmail: email, payeeVerifiedAt: verified },
     });
   }
   // Batched: one round trip per table instead of one per row (remote DB is ~2s away from dev machines).

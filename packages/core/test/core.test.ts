@@ -199,3 +199,9 @@ test("webhook verify payload splices raw body byte-for-byte", () => {
   assert.ok(out.endsWith(`"webhook_event":${raw}}`));
   JSON.parse(out);
 });
+
+test("request ids: refund and evidence stages are distinct and stable", () => {
+  assert.equal(paypalRequestId("L1", "REFUND", "dispute"), paypalRequestId("L1", "REFUND", "dispute"));
+  assert.notEqual(paypalRequestId("L1", "REFUND", "dispute"), paypalRequestId("L1", "EVIDENCE", "dispute"));
+  assert.notEqual(paypalRequestId("L1", "REFUND", "dispute"), paypalRequestId("L1", "CAPTURE", "dispute"));
+});

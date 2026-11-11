@@ -14,7 +14,10 @@
     "doctor": "tsx --env-file=.env scripts/doctor.ts",
     "db:up": "docker compose up -d db",
     "db:migrate": "pnpm --filter @dockclock/db migrate",
-    "db:seed": "pnpm --filter @dockclock/db seed"
+    "db:seed": "pnpm --filter @dockclock/db seed",
+    "worker": "pnpm --filter @dockclock/web worker",
+    "reconcile": "pnpm --filter @dockclock/web reconcile",
+    "seed:reauth": "pnpm --filter @dockclock/web seed:reauth"
   },
   "devDependencies": {
     "@types/node": "^24",

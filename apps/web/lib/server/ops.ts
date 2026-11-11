@@ -17,7 +17,10 @@ export async function recorded<T>(meta: OpMeta, fn: () => Promise<PayPalResult<T
     return { data: prior.response as T, debugId: prior.debugId, requestId: meta.requestId, replayed: true };
   }
   if (!prior) {
-    await prisma.payPalOp.create({ data: { requestId: meta.requestId, operation: meta.operation, loadId: meta.loadId, amountCents: meta.amountCents } });
+    // Webhook and worker poll can race on the same step: the loser of the insert just proceeds; PayPal dedupes
+    // the HTTP call by the shared PayPal-Request-Id, so both get the same result.
+    await prisma.payPalOp.create({ data: { requestId: meta.requestId, operation: meta.operation, loadId: meta.loadId, amountCents: meta.amountCents } })
+      .catch((e: unknown) => { if ((e as { code?: string }).code !== "P2002") throw e; });
   }
   try {
     const r = await fn();
