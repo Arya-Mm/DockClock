@@ -1,6 +1,6 @@
-import { chargeForDwell } from "./holdSizer.js";
-import { quantile } from "./holdSizer.js";
-import type { AccessorialContract } from "./settlement.js";
+import { chargeForDwell } from "./holdSizer";
+import { quantile } from "./holdSizer";
+import type { AccessorialContract } from "./settlement";
 
 /**
  * Live "keep waiting vs release the truck" decision for the dispatcher —

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PayPalError, vaultIdFrom, authorizationFrom, type Order } from "../src/index.js";
+import { PayPalError, vaultIdFrom, authorizationFrom, type Order } from "../src/index";
 
 test("PayPalError exposes issue code and debug id", () => {
   const e = new PayPalError(422, "dbg123", { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "AUTHORIZATION_VOIDED" }] }, "x");

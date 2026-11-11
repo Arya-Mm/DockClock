@@ -1,8 +1,8 @@
-import { MIN, DAY } from "./time.js";
-import { reconcileTimeline, type EvidenceEvent } from "./evidence.js";
-import { planSettlement, type AccessorialContract } from "./settlement.js";
-import { toLedgerRow, type LedgerRow } from "./grid.js";
-import { chargeForDwell, type HistoricalLoad } from "./holdSizer.js";
+import { MIN, DAY } from "./time";
+import { reconcileTimeline, type EvidenceEvent } from "./evidence";
+import { planSettlement, type AccessorialContract } from "./settlement";
+import { toLedgerRow, type LedgerRow } from "./grid";
+import { chargeForDwell, type HistoricalLoad } from "./holdSizer";
 
 /**
  * Deterministic synthetic network (same seed → same data) so the AG Studio

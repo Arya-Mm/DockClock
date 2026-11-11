@@ -1,5 +1,5 @@
-import type { SettlementPlan } from "./settlement.js";
-import type { AuthState } from "./authLifecycle.js";
+import type { SettlementPlan } from "./settlement";
+import type { AuthState } from "./authLifecycle";
 
 /**
  * Failure-path planner: given the plan and what PayPal just said, what happens

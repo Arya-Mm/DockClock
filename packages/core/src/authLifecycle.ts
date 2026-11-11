@@ -1,4 +1,4 @@
-import { DAY } from "./time.js";
+import { DAY } from "./time";
 
 /**
  * PayPal authorization clock (Orders v2 / Payments v2):

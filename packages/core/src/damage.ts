@@ -1,4 +1,4 @@
-import type { LineItem } from "./settlement.js";
+import type { LineItem } from "./settlement";
 
 /**
  * Gate-in vs gate-out damage diff on vision-model detections.

@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { localWallClockToUtc, MIN, DAY } from "../src/time.js";
-import { reconcileTimeline, type EvidenceEvent } from "../src/evidence.js";
-import { planSettlement, maxCapturableCents, type AccessorialContract } from "../src/settlement.js";
-import { authState, watchdogAction } from "../src/authLifecycle.js";
-import { transition, paypalRequestId, centsToPayPal } from "../src/ledger.js";
-import { isValidContainer, resolveContainerOcr } from "../src/iso6346.js";
+import { localWallClockToUtc, MIN, DAY } from "../src/time";
+import { reconcileTimeline, type EvidenceEvent } from "../src/evidence";
+import { planSettlement, maxCapturableCents, type AccessorialContract } from "../src/settlement";
+import { authState, watchdogAction } from "../src/authLifecycle";
+import { transition, paypalRequestId, centsToPayPal } from "../src/ledger";
+import { isValidContainer, resolveContainerOcr } from "../src/iso6346";
 
 const C: AccessorialContract = {
   contractVersionId: "ACME-DRYVAN-v3",
@@ -162,8 +162,8 @@ test("ISO 6346: valid, single-candidate correction, ambiguous → review", () =>
   assert.equal(r.status === "CORRECTED" && r.code, "CSQU3054383");
 });
 
-import { validateExtraction } from "../src/contract-guard.js";
-import { buildVerifyPayload } from "../src/paypal.js";
+import { validateExtraction } from "../src/contract-guard";
+import { buildVerifyPayload } from "../src/paypal";
 
 const RATECON = `Detention: 2 hours free time, then $65.00 per hour billed in 15 minute increments.
 Grace period 15 minutes for late arrival. Truck Order Not Used (TONU) $175.00. Detention capped at $300.00 per stop.

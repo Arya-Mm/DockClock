@@ -1,4 +1,4 @@
-import { maxCapturableCents, type AccessorialContract } from "./settlement.js";
+import { maxCapturableCents, type AccessorialContract } from "./settlement";
 
 /**
  * Predictive hold sizing. A flat $300 hold over-reserves at fast docks (payer

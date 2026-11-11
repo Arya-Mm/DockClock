@@ -1,5 +1,5 @@
-import { MIN } from "./time.js";
-import type { ResolvedTimeline } from "./evidence.js";
+import { MIN } from "./time";
+import type { ResolvedTimeline } from "./evidence";
 
 /** Version-pinned accessorial terms. Every settlement records contractVersionId. */
 export interface AccessorialContract {

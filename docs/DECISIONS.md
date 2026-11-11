@@ -32,3 +32,9 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 
 ## Environment
 19. **Docker Desktop fails to start** (`dockerInference` socket file locked). Migrations are generated offline; DB connect/migrate/seed unverified until Docker works (reboot or `wsl --shutdown`).
+
+## Phase 1
+20. **Database = Neon** (project rapid-pine-31151912, us-east-1) because local Docker Desktop fails to start. Pooled `DATABASE_URL` for the app, `DATABASE_URL_UNPOOLED` as Prisma `directUrl` for migrations. Neon skills + MCP installed project-scoped (OAuth, no API key in files).
+21. **Vault during purchase works in sandbox** (vault `VAULTED` on first approval). M18 fallback not needed; kept documented.
+22. **Relative imports are extensionless** in packages: Turbopack cannot map `./x.js` to `./x.ts`. tsc (Bundler) and tsx both resolve extensionless paths.
+23. **Seed is batched** (`createMany`): about 2s per round trip from India to us-east-1 made per-row upserts take minutes.

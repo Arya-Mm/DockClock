@@ -7,7 +7,7 @@
 //    unless a human signed a doc containing it — and both parties confirm terms once).
 // Regex "imperative token stripping" is theater; grounding + schema + deterministic math is the defense.
 
-import type { AccessorialContract } from "./settlement.js";
+import type { AccessorialContract } from "./settlement";
 
 export interface ExtractedField { value: number; quote: string }
 

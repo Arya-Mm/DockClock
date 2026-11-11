@@ -6,4 +6,4 @@ export const prisma = g.__dcPrisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== "production") g.__dcPrisma = prisma;
 
 export * from "@prisma/client";
-export { stateForAction, sha256Json } from "./mapping.js";
+export { stateForAction, sha256Json } from "./mapping";

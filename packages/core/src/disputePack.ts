@@ -1,5 +1,5 @@
-import type { SettlementPlan } from "./settlement.js";
-import type { ResolvedTimeline } from "./evidence.js";
+import type { SettlementPlan } from "./settlement";
+import type { ResolvedTimeline } from "./evidence";
 
 /**
  * Turns the settlement audit trail into a PayPal dispute evidence submission.

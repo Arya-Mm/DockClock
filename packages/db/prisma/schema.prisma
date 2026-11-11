@@ -8,7 +8,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
+  // Neon: pooled URL for app traffic, direct (unpooled) for migrations.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 enum LoadState {

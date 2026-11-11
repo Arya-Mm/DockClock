@@ -1,4 +1,4 @@
-import type { SettlementPlan } from "./settlement.js";
+import type { SettlementPlan } from "./settlement";
 
 /**
  * AG Grid / AG Studio data layer. Flat, typed rows with descriptions on every

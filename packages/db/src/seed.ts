@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { FACILITIES, DEMO_CONTRACT, type LedgerRow } from "@dockclock/core";
-import { prisma, stateForAction, sha256Json } from "./index.js";
+import { prisma, stateForAction, sha256Json } from "./index";
 
 const require = createRequire(import.meta.url);
 const ledger: LedgerRow[] = JSON.parse(readFileSync(require.resolve("@dockclock/core/fixtures/ledger.json"), "utf8"));
@@ -32,16 +32,18 @@ async function main() {
       create: { id, name, usdot: String(1000000 + carriers.indexOf(name)), verifiedPayeeEmail: `${slug(name)}@carrier.example.com` },
     });
   }
-  for (const r of ledger) {
-    await prisma.load.upsert({
-      where: { id: r.loadId }, update: {},
-      create: {
-        id: r.loadId, facilityId: r.facilityId, carrierId: `C-${slug(r.carrierName)}`, contractVersionId: c.contractVersionId,
-        appointmentAt: new Date(r.appointmentIso), state: stateForAction(r.action),
-        plans: { create: { version: 1, hash: sha256Json(r), body: { ...r } } },
-      },
-    });
-  }
+  // Batched: one round trip per table instead of one per row (remote DB is ~2s away from dev machines).
+  await prisma.load.createMany({
+    skipDuplicates: true,
+    data: ledger.map((r) => ({
+      id: r.loadId, facilityId: r.facilityId, carrierId: `C-${slug(r.carrierName)}`, contractVersionId: c.contractVersionId,
+      appointmentAt: new Date(r.appointmentIso), state: stateForAction(r.action),
+    })),
+  });
+  await prisma.plan.createMany({
+    skipDuplicates: true, // unique (loadId, version)
+    data: ledger.map((r) => ({ loadId: r.loadId, version: 1, hash: sha256Json(r), body: { ...r } })),
+  });
   console.log(`seeded ${FACILITIES.length} facilities, ${carriers.length} carriers, ${ledger.length} loads`);
 }
 

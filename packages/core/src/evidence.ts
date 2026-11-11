@@ -1,4 +1,4 @@
-import { MIN } from "./time.js";
+import { MIN } from "./time";
 
 /**
  * Evidence reconciliation. This is where the AI earns its keep and where most

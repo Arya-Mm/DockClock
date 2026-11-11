@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { maxCapturableCents } from "@dockclock/core";
-import { createHoldOrderVaulted, authorizationFrom, voidHold, captureFinal } from "../src/index.js";
+import { createHoldOrderVaulted, authorizationFrom, voidHold, captureFinal } from "../src/index";
 
 const on = process.env.RUN_SANDBOX === "1" && !!process.env.DC_TEST_VAULT_ID;
 const vault = process.env.DC_TEST_VAULT_ID ?? "";

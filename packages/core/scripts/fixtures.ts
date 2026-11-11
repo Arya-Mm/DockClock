@@ -1,8 +1,8 @@
 import { writeFileSync } from "node:fs";
-import { seedNetwork, FACILITIES } from "../src/seed.js";
-import { facilityScorecard, LEDGER_FIELD_DESCRIPTIONS, LEDGER_COLUMN_DEFS } from "../src/grid.js";
-import { recommendHold } from "../src/holdSizer.js";
-import { runScenarios, DEMO_CONTRACT } from "../src/scenarios.js";
+import { seedNetwork, FACILITIES } from "../src/seed";
+import { facilityScorecard, LEDGER_FIELD_DESCRIPTIONS, LEDGER_COLUMN_DEFS } from "../src/grid";
+import { recommendHold } from "../src/holdSizer";
+import { runScenarios, DEMO_CONTRACT } from "../src/scenarios";
 const net = seedNetwork(DEMO_CONTRACT);
 const holds = FACILITIES.flatMap((f) => [8, 14].map((h) => ({ facilityId: f.id, facilityName: f.name, arrivalHourLocal: h, ...recommendHold(net.history, f.id, h, DEMO_CONTRACT) })));
 const w = (n: string, v: unknown) => writeFileSync(`fixtures/${n}.json`, JSON.stringify(v, null, 2));

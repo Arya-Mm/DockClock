@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stateForAction, sha256Json } from "../src/mapping.js";
+import { stateForAction, sha256Json } from "../src/mapping";
 
 test("sha256Json is key-order independent", () => {
   assert.equal(sha256Json({ a: 1, b: { c: 2, d: [1, 2] } }), sha256Json({ b: { d: [1, 2], c: 2 }, a: 1 }));

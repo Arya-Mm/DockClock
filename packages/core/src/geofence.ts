@@ -1,4 +1,4 @@
-import type { EvidenceEvent } from "./evidence.js";
+import type { EvidenceEvent } from "./evidence";
 
 /**
  * Derives ARRIVAL/DEPARTURE evidence from the raw ELD GPS ping stream instead

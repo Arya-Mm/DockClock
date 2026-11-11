@@ -1,18 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MIN, DAY } from "../src/time.js";
-import { diffDamage, damageLineItems, type Detection } from "../src/damage.js";
-import { timeWeightedMkt, evaluateColdChain } from "../src/coldchain.js";
-import { recommendHold, chargeForDwell } from "../src/holdSizer.js";
-import { tonuAdvice, breakEvenDwellMin } from "../src/tonu.js";
-import { checkPayout } from "../src/payeeGuard.js";
-import { deriveGeofenceEvents } from "../src/geofence.js";
-import { amountsPreserved } from "../src/disputePack.js";
-import { facilityScorecard } from "../src/grid.js";
-import { seedNetwork } from "../src/seed.js";
-import { runScenarios, DEMO_CONTRACT as C } from "../src/scenarios.js";
-import { planSettlement } from "../src/settlement.js";
-import { reconcileTimeline } from "../src/evidence.js";
+import { MIN, DAY } from "../src/time";
+import { diffDamage, damageLineItems, type Detection } from "../src/damage";
+import { timeWeightedMkt, evaluateColdChain } from "../src/coldchain";
+import { recommendHold, chargeForDwell } from "../src/holdSizer";
+import { tonuAdvice, breakEvenDwellMin } from "../src/tonu";
+import { checkPayout } from "../src/payeeGuard";
+import { deriveGeofenceEvents } from "../src/geofence";
+import { amountsPreserved } from "../src/disputePack";
+import { facilityScorecard } from "../src/grid";
+import { seedNetwork } from "../src/seed";
+import { runScenarios, DEMO_CONTRACT as C } from "../src/scenarios";
+import { planSettlement } from "../src/settlement";
+import { reconcileTimeline } from "../src/evidence";
 
 const d = (id: string, o: Partial<Detection> = {}): Detection => ({ id, panel: "LEFT", type: "DENT", box: { x: 0.4, y: 0.4, w: 0.1, h: 0.1 }, confidence: 0.9, severity: 0.3, imageRef: id, ...o });
 

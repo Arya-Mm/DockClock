@@ -1,5 +1,5 @@
-import { MIN } from "./time.js";
-import type { LineItem } from "./settlement.js";
+import { MIN } from "./time";
+import type { LineItem } from "./settlement";
 
 /**
  * Reefer temperature compliance.

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p .", "test": "node --import tsx --test test/*.test.ts" },
+  "scripts": { "typecheck": "tsc -p .", "test": "node --env-file-if-exists=../../.env --import tsx --test test/*.test.ts" },
   "dependencies": { "@dockclock/core": "workspace:*" },
   "devDependencies": { "@types/node": "^24", "typescript": "^5.9.3" }
 }

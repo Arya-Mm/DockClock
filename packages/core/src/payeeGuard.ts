@@ -1,4 +1,4 @@
-import { DAY } from "./time.js";
+import { DAY } from "./time";
 
 /**
  * Payout fraud controls. Freight's #1 fraud pattern is double-brokering and
