@@ -10,6 +10,6 @@ test("sha256Json is key-order independent", () => {
 test("stateForAction covers every settlement action", () => {
   assert.equal(stateForAction("VOID"), "VOIDED");
   assert.equal(stateForAction("CAPTURE"), "CAPTURED");
-  assert.equal(stateForAction("CAPTURE_AND_INVOICE"), "INVOICED");
-  assert.equal(stateForAction("HOLD_FOR_REVIEW"), "REVIEW");
+  assert.equal(stateForAction("CAPTURE_AND_INVOICE"), "INVOICED_SPILLOVER");
+  assert.equal(stateForAction("HOLD_FOR_REVIEW"), "NEEDS_REVIEW");
 });

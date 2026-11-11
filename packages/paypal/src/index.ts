@@ -1,42 +1,60 @@
-// src/paypal.ts
-// Thin, correct PayPal REST gateway (Orders v2 AUTHORIZE, Payments v2, Payouts v1, Invoicing v2, Webhooks).
-// Fixes vs. the earlier draft:
-//  1. Idempotency keys derive from (loadId, operation, stage) — NOT amount (two equal partial captures would collide).
-//  2. Webhook verification splices the RAW body into the verify payload. JSON.parse->stringify re-serializes the
-//     event and can break signature verification.
-//  3. Payouts use a deterministic sender_batch_id (PayPal rejects duplicates) -> retry-safe payouts.
-//  4. final_capture:true on the settlement capture auto-releases the rest of the hold; no separate void call.
-//  5. Reauthorize is gated by authLifecycle.ts (only after the 3-day honor period, plan for one).
-//  6. Vaulting: payer approves ONCE (createHoldOrder with vault=true); every later load is
-//     authorized server-side from the vault id with no redirect (createHoldOrderVaulted).
-
+// PayPal REST gateway for money WRITES (Orders v2 AUTHORIZE, Payments v2, Payouts v1, Invoicing v2, Webhooks, Disputes).
+// Docs: https://developer.paypal.com/docs/api/orders/v2/  https://developer.paypal.com/docs/api/payments/v2/
+// Rules (CLAUDE.md): every write carries a stage-scoped PayPal-Request-Id; amounts only via centsToPayPal.
+// History (from core v3): ids from (loadId, op, stage) not amount; raw-body webhook verify; deterministic
+// sender_batch_id; final_capture releases the remainder; reauth gated by authLifecycle; vault on first approval.
 import { paypalRequestId as requestId, centsToPayPal as centsToValue } from "@dockclock/core/ledger";
 
-const BASE = process.env.PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+export const PAYPAL_BASE = process.env.PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+
+export interface PayPalResult<T> { data: T; debugId: string | null; status: number; requestId: string | null }
+
+export class PayPalError extends Error {
+  constructor(public status: number, public debugId: string | null, public body: unknown, msg: string) { super(msg); this.name = "PayPalError"; }
+  /** First issue code, e.g. INSTRUMENT_DECLINED, AUTHORIZATION_VOIDED. */
+  get issue(): string | null {
+    const b = this.body as { details?: Array<{ issue?: string }>; name?: string } | null;
+    return b?.details?.[0]?.issue ?? b?.name ?? null;
+  }
+}
 
 let tokenCache: { token: string; expMs: number } | null = null;
 
-async function accessToken(): Promise<string> {
-  if (tokenCache && Date.now() < tokenCache.expMs - 60_000) return tokenCache.token;
-  const id = process.env.PAYPAL_CLIENT_ID, secret = (process.env.PAYPAL_CLIENT_SECRET ?? process.env.PAYPAL_SECRET);
-  if (!id || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET (or PAYPAL_SECRET) not set");
-  const res = await fetch(`${BASE}/v1/oauth2/token`, {
+function basicAuth(): string {
+  const id = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET ?? process.env.PAYPAL_SECRET;
+  if (!id || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET not set");
+  return "Basic " + Buffer.from(`${id}:${secret}`).toString("base64");
+}
+
+async function oauth(extra: Record<string, string> = {}): Promise<{ access_token: string; expires_in: number }> {
+  const res = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
     method: "POST",
-    headers: { Authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
-    body: "grant_type=client_credentials",
+    headers: { Authorization: basicAuth(), "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "client_credentials", ...extra }).toString(),
+    cache: "no-store",
   });
-  const j: any = await res.json();
-  if (!res.ok) throw new Error(`OAuth failed: ${JSON.stringify(j)}`);
-  tokenCache = { token: j.access_token, expMs: Date.now() + j.expires_in * 1000 };
+  const j = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!res.ok || !j.access_token) throw new PayPalError(res.status, res.headers.get("paypal-debug-id"), j, `OAuth failed (${res.status})`);
+  return { access_token: j.access_token, expires_in: j.expires_in ?? 0 };
+}
+
+export async function accessToken(): Promise<string> {
+  if (tokenCache && Date.now() < tokenCache.expMs - 60_000) return tokenCache.token;
+  const t = await oauth();
+  tokenCache = { token: t.access_token, expMs: Date.now() + t.expires_in * 1000 };
   return tokenCache.token;
 }
 
-export class PayPalError extends Error {
-  constructor(public status: number, public debugId: string | null, public body: unknown, msg: string) { super(msg); }
+/** Browser-safe token for JS SDK v6 (sample: paypal-examples/v6-web-sdk-sample-integration authRouteHandler). */
+export async function browserClientToken(): Promise<{ accessToken: string; expiresIn: number }> {
+  const t = await oauth({ response_type: "client_token" });
+  return { accessToken: t.access_token, expiresIn: t.expires_in };
 }
 
-async function call<T = any>(method: string, path: string, body?: unknown, reqId?: string, attempt = 0): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+const MAX_RETRIES = 3;
+
+export async function call<T>(method: "GET" | "POST" | "PATCH", path: string, body?: unknown, reqId?: string, attempt = 0): Promise<PayPalResult<T>> {
+  const res = await fetch(`${PAYPAL_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${await accessToken()}`,
@@ -45,20 +63,36 @@ async function call<T = any>(method: string, path: string, body?: unknown, reqId
       ...(reqId ? { "PayPal-Request-Id": reqId } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
   });
   const debugId = res.headers.get("paypal-debug-id");
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-  // Retry 429/5xx with the SAME request id -> PayPal dedupes, so retries are safe.
-  if ((res.status === 429 || res.status >= 500) && attempt < 3 && reqId) {
+  const data: unknown = text ? JSON.parse(text) : {};
+  // Retry 429/5xx with the SAME request id -> PayPal dedupes, so retries are safe. GETs are naturally idempotent.
+  if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES && (reqId || method === "GET")) {
     await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
     return call<T>(method, path, body, reqId, attempt + 1);
   }
   if (!res.ok) throw new PayPalError(res.status, debugId, data, `${method} ${path} -> ${res.status} (debug_id=${debugId})`);
-  return data as T;
+  return { data: data as T, debugId, status: res.status, requestId: reqId ?? null };
 }
 
-// --- Hold lifecycle ---------------------------------------------------------
+// --- Response shapes (only fields we read) -------------------------------------
+
+export interface Money { currency_code: string; value: string }
+export interface Authorization { id: string; status: string; amount?: Money; expiration_time?: string; create_time?: string }
+export interface Capture { id: string; status: string; amount?: Money; status_details?: { reason?: string }; final_capture?: boolean }
+export interface Order {
+  id: string;
+  status: string;
+  links?: Array<{ href: string; rel: string; method?: string }>;
+  payment_source?: { paypal?: { email_address?: string; attributes?: { vault?: { id?: string; status?: string; customer?: { id?: string } } } } };
+  purchase_units?: Array<{ reference_id?: string; payments?: { authorizations?: Authorization[]; captures?: Capture[] } }>;
+}
+
+// --- Hold lifecycle --------------------------------------------------------------
+
+const appUrl = () => process.env.APP_URL ?? "http://localhost:3000";
 
 const unit = (loadId: string, holdCents: number, description: string) => ({
   reference_id: loadId,
@@ -68,73 +102,78 @@ const unit = (loadId: string, holdCents: number, description: string) => ({
 });
 
 /**
- * First load for a payer: buyer approves in the JS SDK; with vault=true the
- * approval also saves their PayPal wallet (usage_type MERCHANT) for later loads.
- * After approval call authorizeOrder(); read the vault id with vaultIdFrom().
+ * First load for a payer: buyer approves in JS SDK v6. With vault=true the approval also saves their PayPal wallet.
+ * Doc: https://developer.paypal.com/docs/checkout/save-payment-methods/during-purchase/orders-api/paypal/
  */
 export function createHoldOrder(loadId: string, holdCents: number, description: string, vault = true) {
-  return call("POST", "/v2/checkout/orders", {
+  return call<Order>("POST", "/v2/checkout/orders", {
     intent: "AUTHORIZE",
     purchase_units: [unit(loadId, holdCents, description)],
-    ...(vault ? { payment_source: { paypal: {
-      attributes: { vault: { store_in_vault: "ON_SUCCESS", usage_type: "MERCHANT", customer_type: "BUSINESS" } },
-      experience_context: { user_action: "CONTINUE", shipping_preference: "NO_SHIPPING", brand_name: "DockClock" },
-    } } } : {}),
-  }, requestId(loadId, "ORDER", 1));
+    payment_source: { paypal: {
+      ...(vault ? { attributes: { vault: { store_in_vault: "ON_SUCCESS", usage_type: "MERCHANT", customer_type: "CONSUMER" } } } : {}),
+      experience_context: { user_action: "CONTINUE", shipping_preference: "NO_SHIPPING", brand_name: "DockClock",
+        return_url: `${appUrl()}/dispatch/approved`, cancel_url: `${appUrl()}/dispatch` },
+    } },
+  }, requestId(loadId, "ORDER", vault ? "vault" : 1));
 }
 
-/** Vault id appears only when status is VAULTED (it may arrive later via VAULT.PAYMENT-TOKEN.CREATED). */
-export function vaultIdFrom(authorizeResponse: any): string | null {
-  const v = authorizeResponse?.payment_source?.paypal?.attributes?.vault;
-  return v?.status === "VAULTED" && v?.id ? String(v.id) : null;
+/** Vault id appears only when status is VAULTED (else later via VAULT.PAYMENT-TOKEN.CREATED). */
+export function vaultIdFrom(o: Order): string | null {
+  const v = o.payment_source?.paypal?.attributes?.vault;
+  return v?.status === "VAULTED" && v.id ? v.id : null;
+}
+
+export const authorizationFrom = (o: Order): Authorization | null => o.purchase_units?.[0]?.payments?.authorizations?.[0] ?? null;
+
+/** Call after the payer approves. Returns the order with the authorization. */
+export function authorizeOrder(loadId: string, orderId: string) {
+  return call<Order>("POST", `/v2/checkout/orders/${orderId}/authorize`, {}, requestId(loadId, "AUTHORIZE", orderId));
 }
 
 /** Repeat loads: no buyer redirect. Handles both "auth returned inline" and "needs /authorize". */
 export async function createHoldOrderVaulted(loadId: string, holdCents: number, description: string, vaultId: string) {
-  const order: any = await call("POST", "/v2/checkout/orders", {
+  const order = await call<Order>("POST", "/v2/checkout/orders", {
     intent: "AUTHORIZE",
     purchase_units: [unit(loadId, holdCents, description)],
     payment_source: { paypal: { vault_id: vaultId } },
   }, requestId(loadId, "ORDER", "vaulted"));
-  const inline = order?.purchase_units?.[0]?.payments?.authorizations?.[0]?.id;
-  if (inline) return { orderId: order.id as string, authorizationId: inline as string, raw: order };
-  const { authorizationId, raw } = await authorizeOrder(loadId, order.id);
-  return { orderId: order.id as string, authorizationId, raw };
+  if (authorizationFrom(order.data)) return { order, authorize: null };
+  const authorize = await authorizeOrder(loadId, order.data.id);
+  return { order, authorize };
 }
 
+export function getOrder(orderId: string) { return call<Order>("GET", `/v2/checkout/orders/${orderId}`); }
+export function getAuthorization(id: string) { return call<Authorization>("GET", `/v2/payments/authorizations/${id}`); }
+export function getCapture(id: string) { return call<Capture>("GET", `/v2/payments/captures/${id}`); }
 
-/** Call after the facility approves the order in the PayPal JS SDK. Returns authorization id. */
-export async function authorizeOrder(loadId: string, orderId: string): Promise<{ authorizationId: string; raw: any }> {
-  const raw = await call("POST", `/v2/checkout/orders/${orderId}/authorize`, {}, requestId(loadId, "AUTHORIZE", orderId));
-  const authorizationId = raw?.purchase_units?.[0]?.payments?.authorizations?.[0]?.id;
-  if (!authorizationId) throw new Error("No authorization id in response");
-  return { authorizationId, raw };
-}
-
+/** final_capture:true releases any uncaptured remainder of the hold (M16). */
 export function captureFinal(loadId: string, authorizationId: string, cents: number, stage = "settle") {
-  return call("POST", `/v2/payments/authorizations/${authorizationId}/capture`, {
+  return call<Capture>("POST", `/v2/payments/authorizations/${authorizationId}/capture`, {
     amount: { currency_code: "USD", value: centsToValue(cents) },
-    final_capture: true,                 // releases any uncaptured remainder of the hold
-    invoice_id: `${loadId}-${stage}`,    // PayPal also rejects duplicate invoice_id
+    final_capture: true,
+    invoice_id: `${loadId}-${stage}`,
     note_to_payer: "Detention per signed rate confirmation",
   }, requestId(loadId, "CAPTURE", stage));
 }
 
 export function voidHold(loadId: string, authorizationId: string) {
-  return call("POST", `/v2/payments/authorizations/${authorizationId}/void`, undefined, requestId(loadId, "VOID", authorizationId));
+  return call<Partial<Authorization>>("POST", `/v2/payments/authorizations/${authorizationId}/void`, undefined, requestId(loadId, "VOID", authorizationId));
 }
 
+/** Gated by authLifecycle (only after the 3-day honor period, planned once). Returns a NEW authorization id. */
 export function reauthorize(loadId: string, authorizationId: string, cents: number) {
-  return call("POST", `/v2/payments/authorizations/${authorizationId}/reauthorize`, {
+  return call<Authorization>("POST", `/v2/payments/authorizations/${authorizationId}/reauthorize`, {
     amount: { currency_code: "USD", value: centsToValue(cents) },
   }, requestId(loadId, "REAUTHORIZE", authorizationId));
 }
 
-// --- Carrier payout (only after PAYMENT.CAPTURE.COMPLETED webhook) ----------
+// --- Carrier payout (only after PAYMENT.CAPTURE.COMPLETED) -----------------------
+
+export interface PayoutBatch { batch_header?: { payout_batch_id?: string; batch_status?: string } }
 
 export function payoutCarrier(loadId: string, carrierEmail: string, cents: number, stage = "detention") {
   const batchId = requestId(loadId, "PAYOUT", stage).slice(0, 30);
-  return call("POST", "/v1/payments/payouts", {
+  return call<PayoutBatch>("POST", "/v1/payments/payouts", {
     sender_batch_header: { sender_batch_id: batchId, email_subject: "Detention paid", email_message: `Load ${loadId}` },
     items: [{
       recipient_type: "EMAIL",
@@ -146,20 +185,20 @@ export function payoutCarrier(loadId: string, carrierEmail: string, cents: numbe
   }, requestId(loadId, "PAYOUT", stage));
 }
 
-// --- Spillover invoice -------------------------------------------------------
+// --- Spillover invoice -------------------------------------------------------------
 
-export async function invoiceSpillover(loadId: string, facilityEmail: string, cents: number) {
-  const inv: any = await call("POST", "/v2/invoicing/invoices", {
+export async function invoiceSpillover(loadId: string, recipientEmail: string, cents: number) {
+  const create = await call<{ id?: string; href?: string }>("POST", "/v2/invoicing/invoices", {
     detail: { currency_code: "USD", invoice_number: `${loadId}-SPILL`, note: "Detention above pre-authorized hold" },
-    primary_recipients: [{ billing_info: { email_address: facilityEmail } }],
+    primary_recipients: [{ billing_info: { email_address: recipientEmail } }],
     items: [{ name: `Detention overage — load ${loadId}`, quantity: "1", unit_amount: { currency_code: "USD", value: centsToValue(cents) } }],
   }, requestId(loadId, "INVOICE", "create"));
-  const id = inv.id ?? String(inv.href ?? "").split("/").pop();
-  await call("POST", `/v2/invoicing/invoices/${id}/send`, { send_to_recipient: true }, requestId(loadId, "INVOICE", "send"));
-  return id as string;
+  const id = create.data.id ?? String(create.data.href ?? "").split("/").pop() ?? "";
+  const send = await call<unknown>("POST", `/v2/invoicing/invoices/${id}/send`, { send_to_recipient: true }, requestId(loadId, "INVOICE", "send"));
+  return { id, create, send };
 }
 
-// --- Webhook verification ---------------------------------------------------
+// --- Webhook verification -------------------------------------------------------
 
 /** Build the verify payload with the raw body spliced in byte-for-byte. Exported for tests. */
 export function buildVerifyPayload(h: Record<string, string | null>, webhookId: string, rawBody: string): string {
@@ -180,19 +219,19 @@ export async function verifyWebhook(headers: Headers, rawBody: string): Promise<
   if (!webhookId) throw new Error("PAYPAL_WEBHOOK_ID not set");
   const h: Record<string, string | null> = {};
   for (const k of ["paypal-auth-algo", "paypal-cert-url", "paypal-transmission-id", "paypal-transmission-sig", "paypal-transmission-time"]) h[k] = headers.get(k);
-  const res = await fetch(`${BASE}/v1/notifications/verify-webhook-signature`, {
+  const res = await fetch(`${PAYPAL_BASE}/v1/notifications/verify-webhook-signature`, {
     method: "POST",
     headers: { Authorization: `Bearer ${await accessToken()}`, "Content-Type": "application/json" },
     body: buildVerifyPayload(h, webhookId, rawBody),
   });
   if (!res.ok) return false;
-  const j: any = await res.json();
+  const j = (await res.json()) as { verification_status?: string };
   return j.verification_status === "SUCCESS";
 }
 
-// --- Disputes: submit the evidence pack (multipart: JSON "input" + files) -----
+// --- Disputes: submit the evidence pack (multipart: JSON "input" + files) -----------
 
-/** POST /v1/customer/disputes/{id}/provide-evidence. Verify field names against the sandbox before the demo. */
+/** POST /v1/customer/disputes/{id}/provide-evidence. Verify field names against the sandbox before the demo (Phase 2). */
 export async function provideDisputeEvidence(disputeId: string, pack: { evidenceType: string; notes: string; documents: Array<{ name: string; ref: string }> },
   files: Array<{ name: string; bytes: Uint8Array<ArrayBuffer>; mime: string }>) {
   const form = new FormData();
@@ -200,11 +239,11 @@ export async function provideDisputeEvidence(disputeId: string, pack: { evidence
     evidences: [{ evidence_type: pack.evidenceType, notes: pack.notes, documents: files.map((f) => ({ name: f.name })) }],
   })], { type: "application/json" }));
   for (const f of files) form.append("file1", new Blob([f.bytes], { type: f.mime }), f.name);
-  const res = await fetch(`${BASE}/v1/customer/disputes/${disputeId}/provide-evidence`, {
+  const res = await fetch(`${PAYPAL_BASE}/v1/customer/disputes/${disputeId}/provide-evidence`, {
     method: "POST", headers: { Authorization: `Bearer ${await accessToken()}` }, body: form,
   });
   const debugId = res.headers.get("paypal-debug-id");
   const text = await res.text();
   if (!res.ok) throw new PayPalError(res.status, debugId, text, `provide-evidence -> ${res.status} (debug_id=${debugId})`);
-  return text ? JSON.parse(text) : {};
+  return { data: (text ? JSON.parse(text) : {}) as unknown, debugId, status: res.status, requestId: null };
 }

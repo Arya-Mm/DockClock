@@ -1,6 +1,7 @@
 {
   "name": "dockclock",
   "private": true,
+  "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@10.33.2",
   "engines": {
@@ -21,5 +22,9 @@
     "pg": "^8.23.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@dockclock/core": "workspace:*",
+    "@dockclock/paypal": "workspace:*"
   }
 }

@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import type { SettlementAction } from "@dockclock/core";
 
 /** Seeded (historical) loads: final state implied by the engine's settlement action. */
-export function stateForAction(a: SettlementAction): "VOIDED" | "CAPTURED" | "INVOICED" | "REVIEW" {
+export function stateForAction(a: SettlementAction): "VOIDED" | "CAPTURED" | "INVOICED_SPILLOVER" | "NEEDS_REVIEW" {
   switch (a) {
     case "VOID": return "VOIDED";
     case "CAPTURE": return "CAPTURED";
-    case "CAPTURE_AND_INVOICE": return "INVOICED";
-    case "HOLD_FOR_REVIEW": return "REVIEW";
+    case "CAPTURE_AND_INVOICE": return "INVOICED_SPILLOVER";
+    case "HOLD_FOR_REVIEW": return "NEEDS_REVIEW";
   }
 }
 

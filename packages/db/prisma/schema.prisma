@@ -12,19 +12,19 @@ datasource db {
 }
 
 enum LoadState {
+  // Mirrors packages/core/src/ledger.ts LoadState; transitions enforced by core transition().
   DISPATCHED
-  HOLD_PENDING
-  HOLD_AUTHORIZED
+  AWAITING_PAYER
+  AUTHORIZED
   AT_FACILITY
   DEPARTED
+  NEEDS_REVIEW
   SETTLING
-  REVIEW
   CAPTURED
   VOIDED
-  INVOICED
   PAID_OUT
+  INVOICED_SPILLOVER
   DISPUTED
-  CLOSED
 }
 
 enum OfferKind {
@@ -112,6 +112,9 @@ model Load {
   orderId           String?
   authorizationId   String?
   vaultId           String?
+  authorizedAt      DateTime?
+  lastAuthorizedAt  DateTime?
+  reauthCount       Int             @default(0)
   synthetic         Boolean         @default(true)
   evidence          EvidenceEvent[]
   plans             Plan[]
