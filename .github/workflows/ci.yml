@@ -11,6 +11,7 @@ jobs:
         options: --health-cmd "pg_isready -U dockclock" --health-interval 2s --health-retries 30
     env:
       DATABASE_URL: postgresql://dockclock:dockclock@localhost:5432/dockclock
+      DATABASE_URL_UNPOOLED: postgresql://dockclock:dockclock@localhost:5432/dockclock
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
