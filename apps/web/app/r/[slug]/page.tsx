@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { fmtUsd } from "@dockclock/core/i18n";
 import { verifyReceipt } from "@/lib/server/driver";
 import "../../driver/driver.css";
+import { overpass } from "../../driver/font";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Proof-of-Wait receipt" };
@@ -25,7 +26,7 @@ export default async function ReceiptPage(props: PageProps<"/r/[slug]">) {
     ["Captured from hold", fmtUsd(b.plan.captureCents)], ["Released to shipper", fmtUsd(b.plan.releasedCents)], ["Paid to driver", fmtUsd(b.plan.driverPayoutCents)],
   ];
   return (
-    <div className="rd">
+    <div className={`rd ${overpass.variable}`}>
       <main className="rd-wrap">
         <section className="rd-sign"><div className="rd-sign-inner">
           <span className="rd-place">Proof of wait at {b.facility}</span>

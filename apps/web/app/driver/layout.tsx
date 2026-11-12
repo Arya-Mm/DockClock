@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Overpass } from "next/font/google";
+import { overpass } from "./font";
 import "./driver.css";
-
-// Overpass is an open-source face modelled on US highway-sign lettering (FHWA Highway Gothic): drivers read it daily.
-const overpass = Overpass({ subsets: ["latin"], weight: ["400", "600", "800"], variable: "--rd-font" });
 
 export const metadata: Metadata = {
   title: "DockClock driver",
