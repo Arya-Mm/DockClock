@@ -73,13 +73,15 @@ export async function expireOffers(now = Date.now()) {
 }
 
 /** Health-page heartbeat (per instance). */
-export const heartbeat = { lastTickAt: 0, lastTickMs: 0, lastError: null as string | null, lastReconcileAt: 0 };
+// On globalThis: instrumentation.ts and the route handlers are separate bundles, so a module-level object would be two objects.
+type Heartbeat = { lastTickAt: number; lastTickMs: number; lastError: string | null; lastReconcileAt: number; running: boolean };
+const g = globalThis as typeof globalThis & { __dockclockHeartbeat?: Heartbeat };
+export const heartbeat: Heartbeat = (g.__dockclockHeartbeat ??= { lastTickAt: 0, lastTickMs: 0, lastError: null, lastReconcileAt: 0, running: false });
 
-let running = false; // ticks must not overlap: PayPal calls can outlast TICK_MS
 /** One pass of every poll job. Returns false when a tick is already running (an overlapping trigger is a no-op). */
 export async function tick(now = Date.now()): Promise<boolean> {
-  if (running) return false;
-  running = true;
+  if (heartbeat.running) return false; // ticks must not overlap (also across bundles): PayPal calls can outlast a tick
+  heartbeat.running = true;
   const t0 = Date.now();
   try {
     const jobs = [["captures", pollCaptures], ["payouts", pollPayouts], ["watchdog", reauthWatchdog], ["offers", expireOffers], ["evidence", retryDisputeEvidence]] as const;
@@ -88,7 +90,7 @@ export async function tick(now = Date.now()): Promise<boolean> {
       try { await job(now); } catch (e) { heartbeat.lastError = `${name}: ${(e as Error).message}`; log(`job ${name} failed`, { error: (e as Error).message }); }
     }
     if (now - heartbeat.lastReconcileAt > DAY && now - (await lastReconcileRunMs()) > DAY) await reconcileNow(now);
-  } finally { heartbeat.lastTickAt = now; heartbeat.lastTickMs = Date.now() - t0; running = false; }
+  } finally { heartbeat.lastTickAt = now; heartbeat.lastTickMs = Date.now() - t0; heartbeat.running = false; }
   return true;
 }
 
