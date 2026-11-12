@@ -14,6 +14,8 @@ import { recorded } from "./ops";
 import { notify } from "./executor";
 import { DomainError } from "./http";
 
+// Lock waiters queue behind a slow cross-region holder; Prisma's 5s default would abort the loser of a double accept.
+const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 export const MAX_ROUNDS = 3;            // A5
 export const OFFER_TTL_MS = 120_000;    // A5: short TTL bounds price drift between offer and accept
 const RATE_WINDOW_MS = 60_000, RATE_MAX_OFFERS = 6; // A5: at most two full negotiations a minute per load
@@ -49,9 +51,10 @@ async function mandateFor(agent: AgentKind): Promise<Mandate | null> {
   return m ? MandateSchema.parse({ ...m, expiresAtMs: m.expiresAt.getTime(), revokedAtMs: m.revokedAt?.getTime() ?? null }) : null;
 }
 
-async function spentToday(mandateId: string, nowMs: number): Promise<number> {
+/** ALLOWED accepts today; `excludeOfferId` drops the offer being re-checked at execution so it is not counted twice. */
+async function spentToday(mandateId: string, nowMs: number, excludeOfferId?: string, db: Pick<typeof prisma, "agentAction"> = prisma): Promise<number> {
   const day = new Date(nowMs); day.setUTCHours(0, 0, 0, 0);
-  const rows = await prisma.agentAction.findMany({ where: { mandateId, verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day } }, select: { payload: true } });
+  const rows = await db.agentAction.findMany({ where: { mandateId, verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day }, ...(excludeOfferId ? { NOT: { offerId: excludeOfferId } } : {}) }, select: { payload: true } });
   return rows.reduce((s, r) => s + (Number((r.payload as { cents?: number }).cents) || 0), 0);
 }
 
@@ -138,7 +141,8 @@ export async function negotiate(loadId: string, nowMs = Date.now()) {
       defaultAction: better ? "ACCEPT" : round < MAX_ROUNDS ? "COUNTER" : "DECLINE",
       defaultRationale: `Engine valuation: offer ${better ? "beats" : "loses to"} keeping the meter running.`, llm: model,
     });
-    await appendAction({ agent: "CARRIER", action: cd.action, offerId: offer.id, verdict: "ALLOWED", promptHash: cd.promptHash,
+    // A decision, not a guarded action: logged as DECIDE_*; the guarded ACCEPT row is written by acceptOffer.
+    await appendAction({ agent: "CARRIER", action: `DECIDE_${cd.action}`, offerId: offer.id, verdict: "ALLOWED", promptHash: cd.promptHash,
       payload: { loadId, round, valuation: rows.map((r) => ({ ...r })), source: cd.source, error: cd.error ?? null } });
     rounds.push({ round, offerId: offer.id, kind: offer.kind, priceCents: offer.priceCents, facility: { source: fd.source, rationale: fd.rationale }, carrier: { action: cd.action, source: cd.source, rationale: cd.rationale }, valuation: rows });
 
@@ -161,7 +165,10 @@ async function createOffer(load: LoadFull, chosen: PricedOffer, rationale: strin
     ttlMs: OFFER_TTL_MS, expiresAt: new Date(nowMs + OFFER_TTL_MS), rationale: rationale.slice(0, 600), contractVersionId: load.contractVersionId,
     planHash: planHashOf(load.id, chosen.kind, chosen.priceCents, load.contractVersionId, load.evidence.length),
     ...(slot ? { slotDoorId: "D-3", slotStartAt: new Date(nowMs + DEMO_FACILITY_ECONOMICS.swapSlotLeadMin * 60_000) } : {}),
-  } });
+  } }).catch((e: unknown) => {
+    if ((e as { code?: string }).code === "P2002") throw new DomainError("conflict", `another negotiation on ${load.id} created version ${version}; retry`);
+    throw e;
+  });
   await appendAction({ agent: "FACILITY", action: "PROPOSE", offerId: offer.id, mandateId: meta.mandateId, verdict: "ALLOWED", promptHash: meta.promptHash,
     payload: { loadId: load.id, round: meta.round ?? null, kind: offer.kind, cents: offer.priceCents, basis: chosen.basis, version, planHash: offer.planHash, source: meta.source, error: meta.error ?? null } });
   return offer;
@@ -194,7 +201,7 @@ async function guardOffer(offer: OfferRef, nowMs: number, atExecution: boolean) 
   }
   const verdict = checkMandate({
     mandate, agent: funder, kind: offer.kind, counterparty: load.carrierId, cents: offer.priceCents,
-    spentTodayCents: mandate ? await spentToday(mandate.id, nowMs) : 0,
+    spentTodayCents: mandate ? await spentToday(mandate.id, nowMs, atExecution ? offer.id : undefined) : 0,
     holdCeilingCents: OFFER_FUNDER[offer.kind] === "SHIPPER" ? holdCeiling(load) : null,
     payee: payeeOf(load, nowMs),
     offer: { expiresAtMs: atExecution ? Number.MAX_SAFE_INTEGER : offer.expiresAt.getTime(), version: offer.version, planHash: offer.planHash },
@@ -217,9 +224,10 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
   const g = await guardOffer({ ...pre, kind: pre.kind as OfferKind, version: claim.version, planHash: claim.planHash }, nowMs, false);
   let verdict = g.verdict;
   let treasury: { action: string; promptHash: string; source: string } | null = null;
-  if (verdict.verdict === "ALLOWED" && g.funder === "SHIPPER_TREASURY" && by !== "HUMAN") {
+  // Every shipper-funded accept passes Treasury, whoever accepts. It sees only code facts, no agent-written text (A2).
+  if (verdict.verdict === "ALLOWED" && g.funder === "SHIPPER_TREASURY") {
     const t = await decide({ agent: "SHIPPER_TREASURY", template: PROMPTS.SHIPPER_TREASURY, menu: ["APPROVE", "ESCALATE"] as const,
-      facts: `${pre.kind} ${usd(pre.priceCents)} from the PayPal hold (capture ceiling ${usd(holdCeiling(g.load) ?? 0)}). Mandate guard: ALLOWED.`, counterpartyText: pre.rationale,
+      facts: `${pre.kind} ${usd(pre.priceCents)} from the PayPal hold (capture ceiling ${usd(holdCeiling(g.load) ?? 0)}). Mandate guard: ALLOWED.`,
       defaultAction: "APPROVE", defaultRationale: "Guard passed; engine price within mandate.", llm: llm() });
     treasury = { action: t.action, promptHash: t.promptHash, source: t.source };
     if (t.action === "ESCALATE") verdict = { verdict: "ESCALATED", codes: [], reasons: ["Shipper Treasury Agent escalated to a human"] };
@@ -230,12 +238,20 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
     const row = locked[0]!;
     if ((row.status === "ACCEPTED" || row.status === "SETTLED") && row.version === claim.version && row.planHash === claim.planHash) return "IDEMPOTENT" as const;
     if (row.status !== "OPEN" && verdict.verdict === "ALLOWED") verdict = { verdict: "BLOCKED", codes: ["STALE_OFFER"], reasons: [`offer is ${row.status} (A4: already decided)`] };
+    // Re-check revocation and the daily cap under a mandate row lock: concurrent accepts on different offers
+    // serialise here, and a revoke that landed during the Treasury call is seen (A7, A8).
+    if (verdict.verdict === "ALLOWED" && g.mandate) {
+      const m = (await tx.$queryRaw<{ revokedAt: Date | null; dailyCapCents: number }[]>`SELECT "revokedAt", "dailyCapCents" FROM "Mandate" WHERE id = ${g.mandate.id} FOR UPDATE`)[0];
+      const spent = await spentToday(g.mandate.id, nowMs, undefined, tx);
+      if (!m || (m.revokedAt && m.revokedAt.getTime() <= nowMs)) verdict = { verdict: "BLOCKED", codes: ["REVOKED"], reasons: [`mandate ${g.mandate.id} revoked`] };
+      else if (spent + pre.priceCents > m.dailyCapCents) verdict = { verdict: "ESCALATED", codes: ["DAILY_CAP"], reasons: [`${usd(spent + pre.priceCents)} today over daily cap ${usd(m.dailyCapCents)}`] };
+    }
     await appendAction({ agent: g.funder, action: "ACCEPT", offerId, mandateId: g.mandate?.id, verdict: verdict.verdict, reasons: verdict.reasons, promptHash: treasury?.promptHash,
       payload: { loadId: pre.loadId, kind: pre.kind, cents: pre.priceCents, by, claim, codes: verdict.codes, treasury } }, tx);
     if (verdict.verdict !== "ALLOWED") return "REFUSED" as const;
     await tx.offer.update({ where: { id: offerId }, data: { status: "ACCEPTED", acceptedAt: new Date(nowMs) } });
     return "ACCEPTED" as const;
-  });
+  }, TX_OPTS);
 
   if (result === "IDEMPOTENT") return { status: "ACCEPTED", offerId, idempotent: true, settlement: null };
   if (result === "REFUSED") {
@@ -289,6 +305,12 @@ export async function settleOffer(offerId: string, nowMs = Date.now()) {
 export async function captureOfferOrder(offerId: string) {
   const offer = await prisma.offer.findUnique({ where: { id: offerId } });
   if (!offer) throw new DomainError("not_found", `offer ${offerId} not found`);
+  if (offer.status !== "ACCEPTED") throw new DomainError("state_conflict", `offer is ${offer.status}`);
+  const g = await guardOffer({ ...offer, kind: offer.kind as OfferKind }, Date.now(), true); // A8: revoke stops the capture
+  if (g.verdict.verdict !== "ALLOWED") {
+    await appendAction({ agent: g.funder, action: "PAY", offerId, mandateId: g.mandate?.id, verdict: g.verdict.verdict, reasons: g.verdict.reasons, payload: { loadId: offer.loadId, kind: offer.kind, cents: offer.priceCents } });
+    throw new DomainError("mandate_blocked", g.verdict.reasons.join("; "));
+  }
   const op = await prisma.payPalOp.findUnique({ where: { requestId: paypalRequestId(offer.loadId, "ORDER", `offer-${offerId}`) } });
   const orderId = op?.paypalId;
   if (!orderId) throw new DomainError("no_order", `offer ${offerId} has no carrier order`);
@@ -297,7 +319,7 @@ export async function captureOfferOrder(offerId: string) {
     () => captureOrder(offer.loadId, orderId, `offer-${offerId}`));
   const capture = r.data.purchase_units?.[0]?.payments?.captures?.[0];
   if (capture?.status === "COMPLETED") await prisma.offer.updateMany({ where: { id: offerId, status: "ACCEPTED" }, data: { status: "SETTLED" } });
-  await appendAction({ agent: "CARRIER", action: "PAY", offerId, verdict: "ALLOWED", payload: { loadId: offer.loadId, orderId, captureId: capture?.id ?? null, status: capture?.status ?? r.data.status, debugId: r.debugId, requestId } });
+  await appendAction({ agent: "CARRIER", action: "PAY", offerId, mandateId: g.mandate?.id, verdict: "ALLOWED", payload: { loadId: offer.loadId, orderId, captureId: capture?.id ?? null, status: capture?.status ?? r.data.status, debugId: r.debugId, requestId } });
   return { orderId, captureId: capture?.id ?? null, status: capture?.status ?? r.data.status, debugId: r.debugId };
 }
 

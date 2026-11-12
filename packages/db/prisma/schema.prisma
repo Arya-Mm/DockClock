@@ -230,6 +230,7 @@ model Offer {
   acceptedAt        DateTime?
   createdAt         DateTime    @default(now())
 
+  @@unique([loadId, version]) // concurrent negotiations cannot mint two offers with one version (A3/A4)
   @@index([loadId, status])
 }
 

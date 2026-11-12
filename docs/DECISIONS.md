@@ -38,3 +38,14 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 21. **Vault during purchase works in sandbox** (vault `VAULTED` on first approval). M18 fallback not needed; kept documented.
 22. **Relative imports are extensionless** in packages: Turbopack cannot map `./x.js` to `./x.ts`. tsc (Bundler) and tsx both resolve extensionless paths.
 23. **Seed is batched** (`createMany`): about 2s per round trip from India to us-east-1 made per-row upserts take minutes.
+
+## Phase 3 (agent layer)
+24. **Who funds what.** WAIT_GUARANTEED and RELEASE_TONU are shipper-funded (captured from the PayPal hold at departure, approved by the Shipper Treasury Agent). SLOT_SWAP_WITH_CREDIT is facility-funded (paid to the carrier right away by Payout). PRIORITY_SLOT_PURCHASE and PART_PURCHASE are carrier-paid (a CAPTURE order the carrier approves in PayPal).
+25. **Settle at departure, not at accept, for shipper-funded offers.** The state machine has no settlement before departure (T10). An accepted guarantee is locked and replaces metered detention in `settleLoad` (`applyAcceptedOffer`). Weak evidence still holds money for review.
+26. **A guarantee pays even if the truck was late.** The agreed price replaces the meter, including a late-arrival waiver. That is the point of "guaranteed, no dispute later".
+27. **planHash = sha256(load, kind, engine price, contract version, evidence count).** At accept, the engine re-prices the offer. If the price or the evidence moved, or a newer version exists, the accept is STALE. TTL is 120 s.
+28. **Guard verdicts.** Per-action and daily cap failures are ESCALATED (a human may lift them); every other failure is BLOCKED. The Shipper Treasury LLM can only make a decision stricter (APPROVE or ESCALATE), never looser.
+29. **The Facility Agent never proposes a shipper-funded offer above the hold's capture ceiling.** The guard would block it anyway.
+30. **Hash chain.** Each agent_action hash is sha256(canonical JSON of prevHash plus row plus our own createdAt). Appends are serialised by a Postgres advisory lock. `/verify` and `GET /api/agents/verify` recompute the chain from genesis.
+31. **Demo economics are synthetic.** Door-minute value $0.50, priority band $25–$60, swap lead 15 min, and the carrier HOS clock (`DEMO_CARRIER_CLOCK`). They are labelled as synthetic.
+32. **LLM.** Gemini runs with an 8 s timeout. On a timeout, outage, bad JSON or an off-menu action, the deterministic default applies (A6). Prompt templates live in `packages/agents/src/prompts.ts`, and the full prompt is hashed into each row.

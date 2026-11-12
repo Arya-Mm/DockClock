@@ -5,6 +5,7 @@ import { getLoad, contractOf, moveState } from "./loads";
 import { runSteps, notify, type StepResult } from "./executor";
 import { DomainError } from "./http";
 import { lockedOfferFor } from "./negotiation";
+import { isOn } from "../flags";
 
 export type { StepResult };
 
@@ -20,11 +21,11 @@ export async function settleLoad(loadId: string, nowMs = Date.now()) {
   }));
   const timeline = reconcileTimeline(events);
   const contract = contractOf(load.contractVersion.terms);
-  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: true }, contract);
+  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE") }, contract);
   // An accepted shipper-funded agent offer (re-guarded at departure, A8) replaces metered detention: guaranteed price.
   // Evidence review still wins: weak evidence holds money even with an accepted offer.
   const locked = metered.action === "HOLD_FOR_REVIEW" ? null : await lockedOfferFor(loadId, nowMs);
-  const plan = locked ? applyAcceptedOffer(metered, { id: locked.id, kind: locked.kind as OfferKind, priceCents: locked.priceCents }, load.holdCents, contract) : metered;
+  const plan = locked ? applyAcceptedOffer(metered, { id: locked.id, kind: locked.kind as OfferKind, priceCents: locked.priceCents }, load.holdCents, contract, isOn("OVERCAPTURE")) : metered;
   const planRow = await savePlan(loadId, plan);
 
   // A human approving a review row (Phase 5 review queue) is the only way money moves on weak evidence.

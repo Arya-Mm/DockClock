@@ -23,3 +23,23 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
 - First evidence upload: 422 ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE (f291893f7c905). Retry with same request id: DONE (f269350cc4a29); PROOF_OF_FULFILLMENT + dockclock-audit.txt visible on the dispute (f746279058c58). Multipart field names verified live.
 - No CUSTOMER.DISPUTE.* webhook delivered by sandbox; evidence flow started via applyOutcome. Worker now retries failed evidence every 10 min.
 - Review fixes: unprocessed duplicate webhooks re-dispatch; carrier invoice before payout wait; captureId+CAPTURED in one write and SETTLING accepted for capture outcomes; FAILED never overwrites SUCCEEDED op; reauth replay no double increment; carrier invoice gated on verified payee; missing invoice email -> MANUAL_REVIEW; non-JSON 5xx retried; worker tick lock + per-load isolation.
+
+## Phase 3: agent layer (2026-11-12)
+- Live negotiation on NEG-1112032301: SLOT_SWAP_WITH_CREDIT $22.50 accepted, payout AMV3WA95KPDQY (debug_id f425088159bf7). Hold order 5NP85012EE9672726 (f983538d2c547).
+- Guarantee path on NEG-1112033005: WAIT_GUARANTEED $48.75 accepted, captured at departure 2BN62517PX183330N (f873423c685d5), $26.25 released.
+- Guard live block on NEG-1112032839: $146.25 guarantee over the $86.25 hold ceiling was BLOCKED, so metered detention was captured instead (8M731300SG085045Y, f253288ed306f).
+- Red-team suite 8/8 green (RUN_SANDBOX=1 pnpm --filter @dockclock/web test:redteam): stale, tampered planHash, double accept, over-mandate, over-ceiling, revoked at accept and at departure, "$900" BOL, chain intact.
+- Gemini returned 503s and timeouts during the runs, so every agent decision used the deterministic default (A6). The LLM path is unit-tested with a stub; it has not been proven live yet.
+- Review (Grill Me substitute) fixes:
+  - Ops-key gate (DOCKCLOCK_OPS_KEY, x-ops-key) on negotiate, accept, settle, capture POST and revoke.
+  - accept no longer takes `by` from the body.
+  - Treasury runs on every shipper-funded accept and is fed no agent text.
+  - Daily cap is no longer double-counted at execution.
+  - Mandate row lock: revocation and daily cap are re-checked inside the accept transaction.
+  - captureOfferOrder re-guards and requires ACCEPTED.
+  - Unique (loadId, version).
+  - Carrier decisions are logged as DECIDE_*.
+  - Overcapture flag honoured at settlement.
+  - Transaction timeouts raised for cross-region lock waits.
+- Red-team 9/9, including a binding daily cap.
+- Open: hash-chain head is not anchored outside the DB (planned with Proof-of-Wait receipts).

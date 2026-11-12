@@ -102,3 +102,21 @@ test("hash chain still verifies after every red-team write", { skip: !on }, asyn
   const c = await verifyChain();
   assert.equal(c.ok, true, c.reason ?? "");
 });
+
+test("binding daily cap: the accepted offer is not double-counted at execution; the next one is ESCALATED (A7)", { skip: !on }, async () => {
+  const [a, b] = [await truckAtDock(), await truckAtDock()];
+  const o1 = await proposeOffer(a, "WAIT_GUARANTEED", now);
+  const o2 = await proposeOffer(b, "WAIT_GUARANTEED", now);
+  const day = new Date(now); day.setUTCHours(0, 0, 0, 0);
+  const rows = await prisma.agentAction.findMany({ where: { mandateId: "M-SHIPPER", verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day } }, select: { payload: true } });
+  const spent = rows.reduce((s, r) => s + (Number((r.payload as { cents?: number }).cents) || 0), 0);
+  await shipperCaps(spent + o1.priceCents + Math.floor(o2.priceCents / 2)); // room for exactly one
+  try {
+    const r1 = await acceptOffer(o1.id, { version: o1.version, planHash: o1.planHash }, "HUMAN", now);
+    assert.equal(r1.status, "ACCEPTED");
+    assert.ok(r1.status === "ACCEPTED" && r1.settlement?.status === "LOCKED_FOR_DEPARTURE", "execution re-guard must not count o1 twice");
+    assert.notEqual(await lockedOfferFor(a, now), null);
+    const r2 = await acceptOffer(o2.id, { version: o2.version, planHash: o2.planHash }, "HUMAN", now);
+    assert.ok(r2.status === "ESCALATED" && r2.verdict.codes.includes("DAILY_CAP"));
+  } finally { await shipperCaps(100_000_000); }
+});

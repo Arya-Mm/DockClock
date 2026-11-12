@@ -37,7 +37,7 @@ export async function appendAction(a: ActionInput, tx?: Tx) {
         payload: a.payload as Prisma.InputJsonValue, prevHash, hash: sha256Json(b), createdAt },
     });
   };
-  return tx ? run(tx) : prisma.$transaction(run);
+  return tx ? run(tx) : prisma.$transaction(run, { maxWait: 15_000, timeout: 30_000 });
 }
 
 export interface ChainCheck { ok: boolean; rows: number; brokenAtSeq: number | null; reason: string | null; headHash: string }

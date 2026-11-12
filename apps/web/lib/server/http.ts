@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { timingSafeEqual } from "node:crypto";
 import { PayPalError } from "@dockclock/paypal";
 
 /** Error envelope: { error: { code, message, details?, debugId? } } (api-design skill). */
@@ -30,3 +31,15 @@ export function handle<A extends unknown[]>(fn: (...a: A) => Promise<Response>) 
 }
 
 export class DomainError extends Error { constructor(public code: string, msg: string) { super(msg); } }
+
+/**
+ * Ops gate for routes that move money or change mandates. With DOCKCLOCK_OPS_KEY set, the x-ops-key header must match.
+ * Unset is allowed only outside production (local sandbox dev). shortcut: one shared key, replace with real auth in Phase 7.
+ */
+export function requireOps(req: Request): Response | null {
+  const key = process.env.DOCKCLOCK_OPS_KEY;
+  if (!key) return process.env.NODE_ENV === "production" ? fail(401, "unauthorized", "ops key not configured") : null;
+  const got = Buffer.from(req.headers.get("x-ops-key") ?? "");
+  const want = Buffer.from(key);
+  return got.length === want.length && timingSafeEqual(got, want) ? null : fail(401, "unauthorized", "missing or wrong x-ops-key");
+}
