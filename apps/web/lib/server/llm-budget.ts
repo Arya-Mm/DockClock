@@ -9,6 +9,14 @@ import { notify } from "./executor";
  */
 const EST_USD_PER_CALL = 0.0005;
 let warnedDay = "";
+// Studio dashboard calls (no DB row of their own): counted per UTC day in-process.
+// shortcut: per-instance counter; move to a shared store when running more than one instance.
+let studioDay = "", studioCalls = 0;
+export function noteLlmCall(nowMs = Date.now()) {
+  const d = new Date(nowMs).toISOString().slice(0, 10);
+  if (d !== studioDay) { studioDay = d; studioCalls = 0; }
+  studioCalls++;
+}
 
 export async function llmCallsToday(nowMs = Date.now()): Promise<number> {
   const day = new Date(nowMs); day.setUTCHours(0, 0, 0, 0);
@@ -16,7 +24,7 @@ export async function llmCallsToday(nowMs = Date.now()): Promise<number> {
     prisma.agentAction.count({ where: { createdAt: { gte: day }, payload: { path: ["source"], equals: "LLM" } } }),
     prisma.visionScan.count({ where: { createdAt: { gte: day }, raw: { not: null } } }),
   ]);
-  return agentCalls + visionCalls;
+  return agentCalls + visionCalls + (studioDay === new Date(nowMs).toISOString().slice(0, 10) ? studioCalls : 0);
 }
 
 export async function llmAllowed(nowMs = Date.now()): Promise<boolean> {

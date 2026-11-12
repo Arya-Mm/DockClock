@@ -134,3 +134,11 @@ Tests: core 53, agents 10, db 2, paypal 3, red-team 12/12.
   - Live answers:
     - "Which facilities leak the most money this month?" -> Carson Import Terminal $7,402.50, Tolleson Building Supply $6,625.00 (matches the ledger grid; 1 query).
     - "Show blocked agent actions by reason." -> mandate revoked 12, stale offer (A3) 12, over hold ceiling 7, over daily cap 2 (1 query).
+- Phase 5 review (10 findings, all fixed):
+  - Ops session cookie (/ops sign-in -> httpOnly HMAC cookie). /cockpit, /dashboard and their APIs need it; the key never reaches the browser.
+  - Studio AI calls counted in the F4 cap; AI body read with a real length check; bounded pace queue; unique callIds.
+  - Review decisions serialised per load (advisory lock), so a REJECT cannot race an APPROVE.
+  - Per-row undo timers with unmount cleanup; stale polls ignored; destroyed-grid guard.
+  - Leakage excludes invoiced spillover.
+  - Ledger capped at 500 loads; chain verdict cached by head seq.
+- Screenshots: docs/screenshots/p5-*.jpg (ledger + detail, review queue PAID_OUT, reconciliation, pivot, Studio dashboard + quadrant).

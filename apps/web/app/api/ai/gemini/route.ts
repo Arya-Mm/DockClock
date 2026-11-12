@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { handle, fail, requireOps } from "@/lib/server/http";
-import { llmAllowed } from "@/lib/server/llm-budget";
+import { llmAllowed, noteLlmCall } from "@/lib/server/llm-budget";
 
 /**
  * One AG Studio agent turn on Gemini (generateContent: https://ai.google.dev/api/generate-content, function calling:
@@ -27,10 +27,13 @@ const signatures = new Map<string, string>();
 // retryDelay Gemini returns (capped) before one retry, so the dashboard stays on the free tier instead of failing.
 const MIN_GAP_MS = Number(process.env.GEMINI_MIN_GAP_MS ?? 4_500);
 let nextSlot = 0;
+const MAX_QUEUE_MS = 60_000; // never let a backlog of waiting callers build up
 async function paced<T>(fn: () => Promise<T>): Promise<T> {
   const now = Date.now(), at = Math.max(now, nextSlot);
+  if (at - now > MAX_QUEUE_MS) throw new Error("AI queue is full, try again in a minute");
   nextSlot = at + MIN_GAP_MS;
   if (at > now) await new Promise((ok) => setTimeout(ok, at - now));
+  noteLlmCall(); // every Gemini call counts against the F4 daily cap
   return fn();
 }
 function retryDelayMs(body: unknown): number {
@@ -76,10 +79,14 @@ export const POST = handle(async (req: Request) => {
   const denied = requireOps(req);
   if (denied) return denied;
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "too_large", "AI request too large");
+  const rawBody = await req.text(); // real length check (chunked bodies have no content-length)
+  if (rawBody.length > MAX_BODY) return fail(413, "too_large", "AI request too large");
   const key = process.env.GEMINI_API_KEY;
   if (!key) return fail(503, "ai_unavailable", "GEMINI_API_KEY not configured");
   if (!(await llmAllowed())) return fail(429, "ai_budget", "LLM daily spend cap reached (F4)");
-  const parsed = Req.safeParse(await req.json().catch(() => null));
+  let json: unknown = null;
+  try { json = JSON.parse(rawBody); } catch { json = null; }
+  const parsed = Req.safeParse(json);
   if (!parsed.success) return fail(422, "validation_error", "bad AI request");
   const r = parsed.data;
   const { contents, system } = toGemini(r.input);
@@ -130,7 +137,7 @@ export const POST = handle(async (req: Request) => {
     return fail(502, "gemini_error", `Gemini ${res.status}: ${(j.error?.message ?? "").slice(0, 200)}`);
   }
   const parts = j.candidates?.[0]?.content?.parts ?? [];
-  const stamp = Date.now().toString(36);
+  const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; // unique even within one ms
   const text = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("");
   const output: unknown[] = [];
   if (text) output.push({ id: `msg_${stamp}`, kind: "output", type: "message", role: "assistant", status: "completed", content: [{ type: "text", text, annotations: [] }] });

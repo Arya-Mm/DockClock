@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@dockclock/db";
 import { seedNetwork, toLedgerRow, DEMO_CONTRACT, type LedgerRow, type SettlementPlan } from "@dockclock/core";
 import { searchTransactions } from "@dockclock/paypal";
-import { verifyChain } from "./chain";
+import { verifyChainCached } from "./chain";
 import { settleLoad } from "./settle";
 import { voidLoadHold } from "./holds";
 import { DomainError } from "./http";
@@ -32,14 +32,14 @@ function syntheticNetwork() {
   return (network = { ledger, trend });
 }
 
-/** Leakage = what the carrier claims on paper but DockClock could not capture with evidence. */
-const leak = (r: LedgerRow) => Math.max(0, Math.round((r.claimedUsd - r.capturedUsd) * 100) / 100);
+/** Leakage = what the carrier claims on paper that was neither captured nor invoiced (spillover is billed, not lost). */
+const leak = (r: LedgerRow) => Math.max(0, Math.round((r.claimedUsd - r.capturedUsd - r.invoicedUsd) * 100) / 100);
 
 export async function ledgerRows(): Promise<CockpitLedgerRow[]> {
   const net = syntheticNetwork();
   const synthetic = net.ledger.map((r): CockpitLedgerRow => ({ ...r, synthetic: true, state: r.needsReview ? "NEEDS_REVIEW" : r.capturedUsd > 0 ? "PAID_OUT" : "VOIDED",
     week: isoWeek(Date.parse(r.appointmentIso)), dwellTrend: net.trend.get(r.facilityId) ?? [], receiptSlug: null, leakageUsd: leak(r) }));
-  const loads = await prisma.load.findMany({ where: { synthetic: false, plans: { some: {} } }, include: { facility: true, carrier: true, receipts: { select: { publicSlug: true }, take: 1 }, plans: { orderBy: { version: "desc" }, take: 1 } } });
+  const loads = await prisma.load.findMany({ where: { synthetic: false, plans: { some: {} } }, orderBy: { updatedAt: "desc" }, take: 500, include: { facility: true, carrier: true, receipts: { select: { publicSlug: true }, take: 1 }, plans: { orderBy: { version: "desc" }, take: 1 } } });
   const real = loads.map((l): CockpitLedgerRow => {
     const plan = l.plans[0]!.body as unknown as SettlementPlan;
     const row = toLedgerRow(plan, { facilityId: l.facilityId, facilityName: l.facility.name, carrierName: l.carrier.name, appointmentMs: l.appointmentAt.getTime(), authorizationId: l.authorizationId ?? undefined, captureId: l.captureId ?? undefined });
@@ -69,6 +69,14 @@ export async function reviewRows(): Promise<ReviewRow[]> {
 
 /** The grid cell that moves money: APPROVE runs the executor (real capture), REJECT voids the hold. */
 export async function decideReview(loadId: string, decision: "APPROVE" | "REJECT", by: string) {
+  // One decision per load at a time: a REJECT racing an APPROVE waits, then sees the new state and stops.
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"review:" + loadId}))`;
+    return decideLocked(loadId, decision, by);
+  }, { maxWait: 15_000, timeout: 120_000 });
+}
+
+async function decideLocked(loadId: string, decision: "APPROVE" | "REJECT", by: string) {
   const l = await prisma.load.findUnique({ where: { id: loadId }, select: { state: true, synthetic: true } });
   if (!l) throw new DomainError("not_found", `load ${loadId} not found`);
   if (l.synthetic) throw new DomainError("synthetic", "synthetic rows never move money");
@@ -84,7 +92,7 @@ export async function decideReview(loadId: string, decision: "APPROVE" | "REJECT
 export interface AgentRow { seq: number; agent: string; action: string; verdict: string; offerId: string | null; mandateId: string | null; cents: number | null; reasons: string; promptHash: string | null; hash: string; prevHash: string; source: string | null; createdAt: string; chainOk: boolean }
 
 export async function agentRows(): Promise<AgentRow[]> {
-  const [rows, chain] = await Promise.all([prisma.agentAction.findMany({ orderBy: { seq: "desc" }, take: 1000 }), verifyChain()]);
+  const [rows, chain] = await Promise.all([prisma.agentAction.findMany({ orderBy: { seq: "desc" }, take: 1000 }), verifyChainCached()]);
   return rows.map((r) => {
     const p = r.payload as { cents?: number; source?: string };
     return { seq: r.seq, agent: r.agent, action: r.action, verdict: r.verdict, offerId: r.offerId, mandateId: r.mandateId, cents: typeof p.cents === "number" ? p.cents : null,

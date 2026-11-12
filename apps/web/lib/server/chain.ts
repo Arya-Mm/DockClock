@@ -40,6 +40,17 @@ export async function appendAction(a: ActionInput, tx?: Tx) {
   return tx ? run(tx) : prisma.$transaction(run, { maxWait: 15_000, timeout: 30_000 });
 }
 
+/** verifyChain is O(rows); reuse the verdict while the chain head has not moved. */
+let cached: { headSeq: number; check: ChainCheck } | null = null;
+export async function verifyChainCached(): Promise<ChainCheck> {
+  const head = await prisma.agentAction.findFirst({ orderBy: { seq: "desc" }, select: { seq: true } });
+  const headSeq = head?.seq ?? 0;
+  if (cached && cached.headSeq === headSeq) return cached.check;
+  const check = await verifyChain();
+  cached = { headSeq, check };
+  return check;
+}
+
 export interface ChainCheck { ok: boolean; rows: number; brokenAtSeq: number | null; reason: string | null; headHash: string }
 
 /** Recompute every hash from genesis. Any edited, deleted or reordered row breaks the chain at that seq. */

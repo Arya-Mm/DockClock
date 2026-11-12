@@ -36,7 +36,7 @@ export function buildStudioData(data: StudioData): AgDataSourcesDefinition {
           ['invoicedUsd', 'Invoiced', 'currencyFormat', 'Billed by PayPal invoice above the capture ceiling, USD'],
           ['carrierPayoutUsd', 'Carrier paid', 'currencyFormat', 'Paid to the carrier via PayPal Payouts, USD'],
           ['claimedUsd', 'Claimed', 'currencyFormat', 'What the carrier claims on paper, USD'],
-          ['leakageUsd', 'Leakage', 'currencyFormat', 'Money the carrier claims but could not be captured with evidence (claimed minus captured, floor 0), USD. "Leaks money" means this field.'],
+          ['leakageUsd', 'Leakage', 'currencyFormat', 'Money the carrier claims that was neither captured nor invoiced (claimed minus captured minus invoiced, floor 0), USD. "Leaks money" means this field.'],
         ]),
       },
       {

@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { PayPalError } from "@dockclock/paypal";
 
 /** Error envelope: { error: { code, message, details?, debugId? } } (api-design skill). */
@@ -44,9 +44,19 @@ export class DomainError extends Error { constructor(public code: string, msg: s
  * Unset is allowed only outside production (local sandbox dev). shortcut: one shared key, replace with real auth in Phase 7.
  */
 export function requireOps(req: Request): Response | null {
+  return opsAuthorized(req.headers.get("x-ops-key"), cookieValue(req.headers.get("cookie"), OPS_COOKIE)) ? null : fail(401, "unauthorized", "sign in at /ops or send x-ops-key");
+}
+
+/** Ops browser session: an httpOnly cookie holding an HMAC of the key, so the key itself never reaches the browser. */
+export const OPS_COOKIE = "dc_ops";
+export const opsCookieValue = (key: string) => createHmac("sha256", key).update("dockclock-ops-session-v1").digest("base64url");
+const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+export function opsAuthorized(headerKey: string | null | undefined, cookie: string | null | undefined): boolean {
   const key = process.env.DOCKCLOCK_OPS_KEY;
-  if (!key) return process.env.NODE_ENV === "production" ? fail(401, "unauthorized", "ops key not configured") : null;
-  const got = Buffer.from(req.headers.get("x-ops-key") ?? "");
-  const want = Buffer.from(key);
-  return got.length === want.length && timingSafeEqual(got, want) ? null : fail(401, "unauthorized", "missing or wrong x-ops-key");
+  if (!key) return process.env.NODE_ENV !== "production"; // dev without a key stays open; production fails closed
+  return (!!headerKey && same(headerKey, key)) || (!!cookie && same(cookie, opsCookieValue(key)));
+}
+function cookieValue(header: string | null, name: string): string | null {
+  for (const part of (header ?? "").split(";")) { const [k, ...v] = part.trim().split("="); if (k === name) return decodeURIComponent(v.join("=")); }
+  return null;
 }

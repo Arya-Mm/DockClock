@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getStudioData } from "@/lib/studio-data";
 import { Dashboard } from "./dashboard";
+import { requireOpsPage } from "@/lib/server/ops-page";
 
 export const metadata: Metadata = { title: "DockClock analytics" };
 
 export default async function DashboardPage() {
   await connection(); // live ledger: render per request
+  await requireOpsPage("/dashboard");
   const data = await getStudioData();
   const model = process.env.GEMINI_STUDIO_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite";
   return (

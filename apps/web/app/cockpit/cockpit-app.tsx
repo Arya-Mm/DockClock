@@ -113,9 +113,10 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
   const apiRef = useRef<GridApi<ReviewRow> | null>(null);
   const [pending, setPending] = useState<{ loadId: string; decision: "APPROVE" | "REJECT"; at: number } | null>(null);
   const [log, setLog] = useState<string[]>([]);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Row whose decision is inside its undo window: live refresh must not overwrite it with the server's PENDING.
-  const holdRef = useRef<string | null>(null);
+  // One undo timer per row (a second decision never cancels the first). Rows inside their window are not refreshed.
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const committedAt = useRef(0);
+  useEffect(() => () => { for (const t of timers.current.values()) clearTimeout(t); timers.current.clear(); }, []); // unmount: nothing fires unseen
   const columnDefs = useMemo<ColDef<ReviewRow>[]>(() => [
     { field: "loadId", headerName: "Load", width: 170 },
     { field: "facilityName", headerName: "Facility", filter: "agSetColumnFilter" },
@@ -131,26 +132,28 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
   ], []);
 
   const refresh = useCallback(async () => {
+    const startedAt = Date.now();
     const rows = await getJson<ReviewRow[]>("/api/cockpit/review");
     const api = apiRef.current;
-    if (!api) return;
+    if (!api || api.isDestroyed() || startedAt < committedAt.current) return; // grid gone, or a commit landed after this poll began
     // Live row update via transactions: update known rows, add new ones (getRowId keeps identity).
     const known = new Set<string>(); api.forEachNode((n) => { if (n.data) known.add(n.data.loadId); });
-    const fresh = rows.filter((r) => r.loadId !== holdRef.current);
+    const fresh = rows.filter((r) => !timers.current.has(r.loadId));
     api.applyTransactionAsync({ update: fresh.filter((r) => known.has(r.loadId)), add: fresh.filter((r) => !known.has(r.loadId)) });
   }, []);
   // Poll while money is in flight (capture -> webhook -> payout), so the row turns PAID_OUT without a reload.
   useEffect(() => { const t = setInterval(() => { void refresh().catch(() => {}); }, 4_000); return () => clearInterval(t); }, [refresh]);
 
   const commit = useCallback(async (loadId: string, decision: "APPROVE" | "REJECT") => {
-    setPending(null);
-    holdRef.current = null;
+    timers.current.delete(loadId);
+    setPending((p) => (p?.loadId === loadId ? null : p));
     try {
       const r = await fetch(`/api/cockpit/review/${encodeURIComponent(loadId)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision }) });
       const j = (await r.json()) as { data?: { row: ReviewRow; steps: { do: string; status: string; debugId: string | null; paypalId: string | null }[] }; error?: { message?: string; debugId?: string } };
       if (!r.ok || !j.data) throw new Error(`${j.error?.message ?? r.status}${j.error?.debugId ? ` (debug_id ${j.error.debugId})` : ""}`);
       const d = j.data;
-      apiRef.current?.applyTransaction({ update: [d.row] });
+      committedAt.current = Date.now();
+      if (apiRef.current && !apiRef.current.isDestroyed()) apiRef.current.applyTransaction({ update: [d.row] });
       setLog((l) => [`${loadId} ${decision}: ${d.steps.map((s) => `${s.do} ${s.status}${s.paypalId ? ` ${s.paypalId}` : ""}${s.debugId ? ` debug_id ${s.debugId}` : ""}`).join(", ")}`, ...l].slice(0, 6));
     } catch (e) {
       setLog((l) => [`${loadId} ${decision} failed: ${(e as Error).message}`, ...l].slice(0, 6));
@@ -162,16 +165,19 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
     if (e.colDef.field !== "decision" || !e.data || (e.newValue !== "APPROVE" && e.newValue !== "REJECT")) return;
     const loadId = e.data.loadId, decision = e.newValue as "APPROVE" | "REJECT";
     // Undo window before any money moves: the POST only fires after UNDO_MS.
-    if (timer.current) clearTimeout(timer.current);
-    holdRef.current = loadId;
+    const prev = timers.current.get(loadId);
+    if (prev) clearTimeout(prev);
     setPending({ loadId, decision, at: Date.now() });
-    timer.current = setTimeout(() => void commit(loadId, decision), UNDO_MS);
+    timers.current.set(loadId, setTimeout(() => void commit(loadId, decision), UNDO_MS));
   }, [commit]);
 
   const undo = () => {
-    if (timer.current) clearTimeout(timer.current);
-    holdRef.current = null;
-    if (pending) apiRef.current?.getRowNode(pending.loadId)?.setDataValue("decision", "PENDING");
+    if (pending) {
+      const t = timers.current.get(pending.loadId);
+      if (t) clearTimeout(t);
+      timers.current.delete(pending.loadId);
+      apiRef.current?.getRowNode(pending.loadId)?.setDataValue("decision", "PENDING");
+    }
     setPending(null);
   };
   const defaultColDef = useMemo<ColDef>(() => ({ sortable: true, resizable: true, filter: true, minWidth: 100 }), []);
