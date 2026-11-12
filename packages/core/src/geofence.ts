@@ -24,7 +24,7 @@ export interface GeofenceResult {
   issues: string[];
 }
 
-export function deriveGeofenceEvents(pings: Ping[], f: Facility, opts: { maxSpeedKmh?: number; maxGapMin?: number } = {}): GeofenceResult {
+export function deriveGeofenceEvents(pings: Ping[], f: Facility, opts: { maxSpeedKmh?: number; maxGapMin?: number; reentryMergeMin?: number } = {}): GeofenceResult {
   const maxSpeed = opts.maxSpeedKmh ?? 130;
   const maxGap = (opts.maxGapMin ?? 15) * 60_000;
   const p = [...pings].sort((a, b) => a.tMs - b.tMs);
@@ -45,8 +45,20 @@ export function deriveGeofenceEvents(pings: Ping[], f: Facility, opts: { maxSpee
     issues.push("truck never inside facility geofence");
     return { events, spoofSuspected: spoof, issues };
   }
+  // T14: a trip outside the fence of <= reentryMergeMin (fuel, scale) is the same visit; longer is a new visit,
+  // which this stop does not bill (it is reported so a human can decide).
+  const mergeMs = (opts.reentryMergeMin ?? 30) * 60_000;
   let lastIn = firstIn;
-  while (lastIn + 1 < p.length && inside[lastIn + 1]) lastIn++;
+  for (let i = firstIn + 1; i < p.length; i++) {
+    if (!inside[i]) continue;
+    const outsideMs = p[i]!.tMs - p[lastIn]!.tMs;
+    if (i > lastIn + 1 && outsideMs > mergeMs) {
+      issues.push(`re-entry after ${Math.round(outsideMs / 60000)}m outside at ${new Date(p[i]!.tMs).toISOString()}: new visit, not billed on this stop (T14)`);
+      break;
+    }
+    if (i > lastIn + 1) issues.push(`left fence for ${Math.round(outsideMs / 60000)}m and returned: same visit (T14)`);
+    lastIn = i;
+  }
 
   const gapBefore = firstIn > 0 ? p[firstIn]!.tMs - p[firstIn - 1]!.tMs : 0;
   const gapAfter = lastIn + 1 < p.length ? p[lastIn + 1]!.tMs - p[lastIn]!.tMs : 0;
