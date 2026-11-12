@@ -6,6 +6,8 @@ import { DomainError } from "./http";
 // Historical dwell for hold sizing: the deterministic synthetic network (labelled synthetic in UI).
 let history: ReturnType<typeof seedNetwork>["history"] | null = null;
 const getHistory = () => (history ??= seedNetwork(DEMO_CONTRACT).history);
+/** Synthetic historical dwells at one facility (survival model input for offer pricing). */
+export const facilityDwells = (facilityId: string) => getHistory().filter((h) => h.facilityId === facilityId).map((h) => h.dwellMin);
 
 export function contractOf(terms: unknown): AccessorialContract {
   const c = terms as Partial<AccessorialContract>;

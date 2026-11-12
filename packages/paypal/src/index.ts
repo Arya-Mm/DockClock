@@ -143,6 +143,26 @@ export async function createHoldOrderVaulted(loadId: string, holdCents: number, 
   return { order, authorize };
 }
 
+/**
+ * Carrier-paid purchase (priority slot, part) as a CAPTURE order the carrier approves in PayPal (§5.9).
+ * Docs: https://developer.paypal.com/api/orders/v2/orders-create (experience_context -> link rel "payer-action").
+ * stage = the offer id, so one offer can never create two orders.
+ */
+export function createPurchaseOrder(loadId: string, cents: number, description: string, stage: string, returnUrl: string, cancelUrl: string) {
+  return call<Order>("POST", "/v2/checkout/orders", {
+    intent: "CAPTURE",
+    purchase_units: [unit(loadId, cents, description)],
+    payment_source: { paypal: { experience_context: { return_url: returnUrl, cancel_url: cancelUrl, user_action: "PAY_NOW", shipping_preference: "NO_SHIPPING" } } },
+  }, requestId(loadId, "ORDER", stage));
+}
+
+/** Docs: https://developer.paypal.com/api/orders/v2/orders-capture (empty body; PayPal-Request-Id supported). */
+export function captureOrder(loadId: string, orderId: string, stage: string) {
+  return call<Order>("POST", `/v2/checkout/orders/${orderId}/capture`, {}, requestId(loadId, "CAPTURE", stage));
+}
+
+export const approveLinkOf = (o: Order) => o.links?.find((l) => l.rel === "payer-action" || l.rel === "approve")?.href ?? null;
+
 export function getOrder(orderId: string) { return call<Order>("GET", `/v2/checkout/orders/${orderId}`); }
 export function getAuthorization(id: string) { return call<Authorization>("GET", `/v2/payments/authorizations/${id}`); }
 export function getCapture(id: string) { return call<Capture>("GET", `/v2/payments/captures/${id}`); }

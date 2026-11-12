@@ -11,7 +11,9 @@
     "worker": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/index.ts",
     "worker:once": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/index.ts --once",
     "reconcile": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/reconcile.ts",
-    "seed:reauth": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/seed-reauth-hold.ts"
+    "seed:reauth": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/seed-reauth-hold.ts",
+    "demo:negotiate": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-negotiation.ts",
+    "test:redteam": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx --test test/redteam.test.ts"
   },
   "dependencies": {
     "@dockclock/agents": "workspace:*",

@@ -1,6 +1,6 @@
 import { chargeForDwell } from "./holdSizer";
 import { tonuAdvice } from "./tonu";
-import type { AccessorialContract } from "./settlement";
+import { maxCapturableCents, type AccessorialContract, type SettlementPlan } from "./settlement";
 
 /**
  * Offer pricing (PLAN §4.3). Deterministic, integer cents. This is the ONLY source of an offer's price:
@@ -28,6 +28,9 @@ export interface PricingContext {
 }
 
 export interface PricedOffer { kind: OfferKind; priceCents: number; basis: string }
+
+/** Demo facility economics (config, not LLM): value of a door-minute and the priority-slot band. Synthetic. */
+export const DEMO_FACILITY_ECONOMICS = { doorMinuteCents: 50, priorityBandCents: { lo: 2_500, hi: 6_000 }, swapSlotLeadMin: 15 } as const;
 
 const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -77,6 +80,32 @@ export function priceOffer(kind: OfferKind, ctx: PricingContext, c: AccessorialC
 /** Deterministic default offer (A6): what the Facility Agent sends when the LLM times out or returns junk. */
 export function defaultOffer(ctx: PricingContext, c: AccessorialContract): PricedOffer {
   return priceOffer("SLOT_SWAP_WITH_CREDIT", ctx, c) ?? priceOffer("WAIT_GUARANTEED", ctx, c)!;
+}
+
+/**
+ * An accepted shipper-funded offer (WAIT_GUARANTEED, RELEASE_TONU) replaces the metered detention with the agreed
+ * engine price: "guaranteed, no dispute later". Line items (damage, seal, etc.) still apply on top, same allocation
+ * as planSettlement: pass-through first, then the offer amount split by driverShareBps.
+ */
+export function applyAcceptedOffer(plan: SettlementPlan, offer: { id: string; kind: OfferKind; priceCents: number }, authorizedCents: number, c: AccessorialContract, overcapture = true): SettlementPlan {
+  if (OFFER_FUNDER[offer.kind] !== "SHIPPER") return plan;
+  const shipperItems = plan.lineItems.filter((i) => i.payer === "SHIPPER").reduce((s, i) => s + i.cents, 0);
+  const carrierItems = plan.lineItems.filter((i) => i.payer === "CARRIER").reduce((s, i) => s + i.cents, 0);
+  const chargeCents = offer.priceCents + shipperItems;
+  const ceiling = maxCapturableCents(authorizedCents, overcapture, false);
+  const captureCents = Math.min(chargeCents, ceiling);
+  const invoiceCents = chargeCents - captureCents;
+  const passThrough = Math.min(captureCents, shipperItems);
+  const carrierGross = Math.floor(((captureCents - passThrough) * c.driverShareBps) / 10_000) + passThrough;
+  const net = carrierGross - carrierItems;
+  return {
+    ...plan,
+    action: captureCents === 0 ? "VOID" : invoiceCents > 0 ? "CAPTURE_AND_INVOICE" : "CAPTURE",
+    chargeCents, captureCents, invoiceCents,
+    releasedCents: Math.max(0, authorizedCents - captureCents),
+    driverPayoutCents: Math.max(0, net), carrierInvoiceCents: Math.max(0, -net), platformRetainedCents: captureCents - carrierGross,
+    audit: [...plan.audit, `Accepted agent offer ${offer.id} (${offer.kind}) ${usd(offer.priceCents)} replaces metered detention ${usd(plan.chargeCents - shipperItems)}`],
+  };
 }
 
 // --- Carrier Agent valuation (PLAN §4.4) -----------------------------------------------------------

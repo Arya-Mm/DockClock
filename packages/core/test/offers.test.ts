@@ -46,3 +46,16 @@ test("carrier valuation: a payout that costs the next load ranks below a smaller
   assert.equal(rows[1]!.makesNextLoad, false);
   assert.equal(rows[1]!.missRiskCents, 120000);
 });
+
+import { applyAcceptedOffer } from "../src/offers";
+import { planSettlement } from "../src/settlement";
+import { reconcileTimeline } from "../src/evidence";
+test("accepted WAIT_GUARANTEED replaces metered detention, within the hold ceiling, split by driver share", () => {
+  const base = planSettlement({ loadId: "L1", appointmentMs: 0, timeline: reconcileTimeline([{ source: "ELD_GEOFENCE", kind: "ARRIVAL", utcMs: 0, confidence: 1, citation: "a" }, { source: "ELD_GEOFENCE", kind: "DEPARTURE", utcMs: 300 * 60_000, confidence: 1, citation: "d" }]), authorizedCents: 10_000, overcaptureEnabled: true }, C);
+  const p = applyAcceptedOffer(base, { id: "O1", kind: "WAIT_GUARANTEED", priceCents: 9_000 }, 10_000, C);
+  assert.equal(p.captureCents, 9_000);
+  assert.equal(p.releasedCents, 1_000);
+  assert.equal(p.driverPayoutCents, 8_100);
+  assert.equal(p.platformRetainedCents, 900);
+  assert.equal(applyAcceptedOffer(base, { id: "O2", kind: "SLOT_SWAP_WITH_CREDIT", priceCents: 1 }, 10_000, C), base);
+});
