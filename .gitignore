@@ -13,3 +13,5 @@ playwright-report/
 test-results/
 .neon
 tools/
+e2e/report
+test-results

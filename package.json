@@ -18,9 +18,11 @@
     "worker": "pnpm --filter @dockclock/web worker",
     "reconcile": "pnpm --filter @dockclock/web reconcile",
     "seed:reauth": "pnpm --filter @dockclock/web seed:reauth",
-    "tunnel": "tsx --env-file=.env scripts/tunnel.ts"
+    "tunnel": "tsx --env-file=.env scripts/tunnel.ts",
+    "e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.57.0",
     "@types/node": "^24",
     "@types/pg": "^8.23.1",
     "pg": "^8.23.1",
