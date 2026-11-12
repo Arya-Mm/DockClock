@@ -98,3 +98,20 @@ Gaps found and closed:
 - F4: LLM_DAILY_SPEND_CAP_USD enforced. Over the cap, agents use deterministic defaults and vision goes to review.
 - F5/F6: receipt hash anchored in the append-only agent chain. Verify needs body = hash = anchor and an intact chain. The 2 existing receipts were backfilled (rows marked backfill).
 Tests: core 53, agents 10, db 2, paypal 3, red-team 12/12.
+
+## Phase 5: AG Grid cockpit (in progress, 2026-11-12)
+- AG Grid AI skills installed (ag-dev, ag-update) and read. Versions match: grid 36.2.0, charts 14.2.0, Studio 3.0.0. ag-charts-enterprise is pinned to Studio's 14.2.0.
+- /cockpit: 5 Enterprise grids, each one click from the tab bar:
+  - Settlement ledger: facility -> carrier groups, sum/avg aggs, set filters, master/detail audit trail + PayPal links, outcome/source badges, dwell sparkline, side bar, grand total.
+  - Review queue.
+  - Agent ledger: grouped by agent, blocked rows red, hash + chain verify.
+  - Reconciliation vs PayPal Transaction Search, with cell class rules.
+  - Facility x week pivot: captured / claimed / leakage.
+- Money cell, live on REV-1112080148 (paper-only evidence, so review):
+  - Decision -> APPROVE gave an 8 s undo window, then capture 0YA60647MM4347105 (f53039190e414).
+  - The row updated by transaction; the payout batch MSXSHEBRLK576 appeared live via the webhook + poll.
+  - The approval is recorded in the plan audit with the original flags.
+- Fixed: the live refresh could overwrite a decision inside its undo window; tooltipField (deprecated in 36.2) replaced by tooltip.
+- Blocker: AG_GRID_LICENSE_KEY holds the AG Studio licence, which AG Grid Enterprise rejects ("Invalid License Key"; watermark). A real AG Grid Enterprise key is needed.
+- Fixed: /dashboard read process.env.AG_STUDIO instead of AG_STUDIO_LICENSE_KEY.
+- Next: AG Studio dashboard (DockClock sources with field descriptions, facility quadrant widget, the 2 NL prompts via Gemini, brand theme, saved state).

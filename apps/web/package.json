@@ -14,7 +14,8 @@
     "seed:reauth": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/seed-reauth-hold.ts",
     "demo:negotiate": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-negotiation.ts",
     "test:redteam": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx --test test/redteam.test.ts",
-    "demo:driver": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-driver.ts"
+    "demo:driver": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-driver.ts",
+    "demo:review": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-review.ts"
   },
   "dependencies": {
     "@dockclock/agents": "workspace:*",

@@ -114,6 +114,8 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
   const [pending, setPending] = useState<{ loadId: string; decision: "APPROVE" | "REJECT"; at: number } | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Row whose decision is inside its undo window: live refresh must not overwrite it with the server's PENDING.
+  const holdRef = useRef<string | null>(null);
   const columnDefs = useMemo<ColDef<ReviewRow>[]>(() => [
     { field: "loadId", headerName: "Load", width: 170 },
     { field: "facilityName", headerName: "Facility", filter: "agSetColumnFilter" },
@@ -123,7 +125,7 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
     { field: "decision", headerName: "Decision (edit)", editable: (p) => p.data?.state === "NEEDS_REVIEW", cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["PENDING", "APPROVE", "REJECT"] }, width: 160,
       cellStyle: (p) => (p.data?.state === "NEEDS_REVIEW" ? { background: "#FFF6D6", fontWeight: 700 } : null) },
-    { field: "flags", headerName: "Why held", flex: 2, tooltipField: "audit" },
+    { field: "flags", headerName: "Why held", flex: 2, tooltip: (p) => p.data?.audit ?? "" },
     { field: "captureId", headerName: "Capture", cellRenderer: PayPalLink },
     { field: "payoutBatchId", headerName: "Payout batch" },
   ], []);
@@ -134,13 +136,15 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
     if (!api) return;
     // Live row update via transactions: update known rows, add new ones (getRowId keeps identity).
     const known = new Set<string>(); api.forEachNode((n) => { if (n.data) known.add(n.data.loadId); });
-    api.applyTransactionAsync({ update: rows.filter((r) => known.has(r.loadId)), add: rows.filter((r) => !known.has(r.loadId)) });
+    const fresh = rows.filter((r) => r.loadId !== holdRef.current);
+    api.applyTransactionAsync({ update: fresh.filter((r) => known.has(r.loadId)), add: fresh.filter((r) => !known.has(r.loadId)) });
   }, []);
   // Poll while money is in flight (capture -> webhook -> payout), so the row turns PAID_OUT without a reload.
   useEffect(() => { const t = setInterval(() => { void refresh().catch(() => {}); }, 4_000); return () => clearInterval(t); }, [refresh]);
 
   const commit = useCallback(async (loadId: string, decision: "APPROVE" | "REJECT") => {
     setPending(null);
+    holdRef.current = null;
     try {
       const r = await fetch(`/api/cockpit/review/${encodeURIComponent(loadId)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision }) });
       const j = (await r.json()) as { data?: { row: ReviewRow; steps: { do: string; status: string; debugId: string | null; paypalId: string | null }[] }; error?: { message?: string; debugId?: string } };
@@ -159,12 +163,14 @@ function ReviewGrid({ initial }: { initial: ReviewRow[] }) {
     const loadId = e.data.loadId, decision = e.newValue as "APPROVE" | "REJECT";
     // Undo window before any money moves: the POST only fires after UNDO_MS.
     if (timer.current) clearTimeout(timer.current);
+    holdRef.current = loadId;
     setPending({ loadId, decision, at: Date.now() });
     timer.current = setTimeout(() => void commit(loadId, decision), UNDO_MS);
   }, [commit]);
 
   const undo = () => {
     if (timer.current) clearTimeout(timer.current);
+    holdRef.current = null;
     if (pending) apiRef.current?.getRowNode(pending.loadId)?.setDataValue("decision", "PENDING");
     setPending(null);
   };
@@ -206,7 +212,7 @@ function AgentGrid({ initial }: { initial: AgentRow[] }) {
     { field: "action", filter: "agSetColumnFilter", width: 150 },
     { field: "verdict", filter: "agSetColumnFilter", width: 120 },
     { field: "cents", headerName: "Amount", valueFormatter: (p) => (typeof p.value === "number" ? (p.value / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }) : ""), aggFunc: "sum", width: 120 },
-    { field: "reasons", headerName: "Blocked reasons", flex: 2, filter: "agTextColumnFilter", tooltipField: "reasons" },
+    { field: "reasons", headerName: "Blocked reasons", flex: 2, filter: "agTextColumnFilter", tooltip: (p) => p.data?.reasons ?? "" },
     { field: "mandateId", headerName: "Mandate", filter: "agSetColumnFilter", width: 130 },
     { field: "offerId", headerName: "Offer", width: 130 },
     { field: "source", headerName: "Decided by", filter: "agSetColumnFilter", width: 120 },
