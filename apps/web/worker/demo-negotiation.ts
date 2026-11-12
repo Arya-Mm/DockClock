@@ -1,6 +1,7 @@
 // Phase 3 gate: a dock-jam negotiation runs end to end and settles on the PayPal sandbox.
 // pnpm demo:negotiate            -> new load, vaulted hold, truck waiting 3h, negotiate (credit payout or locked guarantee)
 // pnpm demo:negotiate --depart   -> also departs + settles
+// pnpm demo:negotiate --priority          -> carrier-paid priority slot order (approve link printed)
 // pnpm demo:negotiate --guarantee --depart -> locked WAIT_GUARANTEED captured from the hold at departure
 import { prisma } from "@dockclock/db";
 import { DEMO_CONTRACT } from "@dockclock/core";
@@ -19,8 +20,10 @@ async function main() {
   await prisma.evidenceEvent.create({ data: { loadId: id, source: "ELD_GEOFENCE", kind: "ARRIVAL", utcAt: arrival, confidence: 1, citation: "demo ELD geofence entry" } });
   await moveState(id, "AUTHORIZED", "AT_FACILITY");
   // --guarantee: dispatcher proposes WAIT_GUARANTEED, carrier accepts (Shipper Treasury + guard), captured at departure.
-  const neg = process.argv.includes("--guarantee")
-    ? await proposeOffer(id, "WAIT_GUARANTEED", now).then((o) => acceptOffer(o.id, { version: o.version, planHash: o.planHash }, "CARRIER", now))
+  // --priority: carrier buys an earlier door; acceptance creates a carrier-paid PayPal order to approve in the browser.
+  const pick = process.argv.includes("--guarantee") ? "WAIT_GUARANTEED" : process.argv.includes("--priority") ? "PRIORITY_SLOT_PURCHASE" : null;
+  const neg = pick
+    ? await proposeOffer(id, pick, now).then((o) => acceptOffer(o.id, { version: o.version, planHash: o.planHash }, "CARRIER", now))
     : await negotiate(id, now);
   console.log(JSON.stringify({ loadId: id, hold, negotiation: neg }, null, 1));
   if (process.argv.includes("--depart")) {

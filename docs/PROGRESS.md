@@ -43,3 +43,9 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
   - Transaction timeouts raised for cross-region lock waits.
 - Red-team 9/9, including a binding daily cap.
 - Open: hash-chain head is not anchored outside the DB (planned with Proof-of-Wait receipts).
+- Carrier-paid priority purchase live on NEG-1112042732:
+  - Offer OF-d09ff880, PRIORITY_SLOT_PURCHASE $25.00 (engine band floor).
+  - Order 8F8165353J782793X (f861048a50597); the carrier approved in the sandbox.
+  - Capture 84C11676952052529 COMPLETED (ca592e1ba8832); offer SETTLED.
+  - Ledger PROPOSE, ACCEPT, EXECUTE, PAY all ALLOWED; chain intact at 89 rows.
+- Webhook note: the quick tunnel failed (Cloudflare API timeout). A mis-registered webhook was deleted (f107914c0868c). Webhook 4LX331612L6716300 still points at the old tunnel URL.
