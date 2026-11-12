@@ -1,0 +1,59 @@
+/* Landing: highway dock-sign identity. Asphalt, sign green, reflective white, one amber caution accent. */
+.lp { --asphalt: #1E2226; --asphalt-2: #2B3035; --green: #00573F; --white: #F5F5EF; --mute: #A9B0B6; --amber: #F2B01E;
+  font-family: var(--rd-font), system-ui, sans-serif; background: var(--asphalt); color: var(--white); min-height: 100vh; width: 100%; }
+.lp a { color: inherit; }
+.lp-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px clamp(16px, 5vw, 64px); }
+.lp-mark { font-weight: 800; font-size: 20px; letter-spacing: 0.01em; }
+.lp-bar nav { display: flex; gap: 20px; font-weight: 600; }
+.lp-bar nav a { text-decoration: none; } .lp-bar nav a:hover { text-decoration: underline; }
+
+.lp-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(24px, 5vw, 72px); align-items: center;
+  padding: clamp(24px, 6vw, 80px) clamp(16px, 5vw, 64px) clamp(48px, 8vw, 112px); max-width: 1280px; margin: 0 auto; box-sizing: border-box; }
+.lp h1 { font-size: clamp(38px, 5.6vw, 72px); line-height: 1.02; font-weight: 800; margin: 0; letter-spacing: -0.015em; max-width: 14ch; }
+.lp-lede { font-size: clamp(18px, 1.6vw, 21px); line-height: 1.5; color: #D9DCD6; max-width: 46ch; margin: 22px 0 0; }
+.lp-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 32px; }
+.lp-btn { display: inline-block; padding: 14px 22px; border-radius: 6px; background: var(--amber); color: var(--asphalt) !important; font-weight: 800; text-decoration: none; font-size: 17px; }
+.lp-btn-ghost { background: transparent; color: var(--white) !important; box-shadow: inset 0 0 0 2px var(--white); }
+.lp-btn:hover { filter: brightness(1.06); }
+.lp a:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+
+/* The sign: the one bold element on the page. */
+.lp-sign { margin: 0; background: var(--green); border-radius: 18px; padding: 22px 26px 18px; box-shadow: inset 0 0 0 4px var(--white), inset 0 0 0 9px var(--green), 0 30px 60px -30px #000; }
+.lp-sign-top { display: flex; justify-content: space-between; font-weight: 800; font-size: 17px; }
+.lp-sign-clock { font-weight: 800; font-size: clamp(68px, 9vw, 128px); line-height: 1; margin: 18px 0 10px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.lp-sign-clock small { font-size: 0.42em; opacity: 0.8; }
+.lp-sign-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-top: 3px solid var(--white); padding-top: 12px; font-size: 18px; font-weight: 600; }
+.lp-sign-row b { font-size: clamp(34px, 4vw, 52px); font-weight: 800; color: var(--amber); font-variant-numeric: tabular-nums; }
+.lp-sign-foot { margin-top: 10px; font-weight: 600; opacity: 0.9; }
+.lp-cap { margin-top: 18px; font-size: 13px; color: #CFE3DB; line-height: 1.45; }
+
+.lp section:not(.lp-hero) { max-width: 1180px; margin: 0 auto; padding: clamp(40px, 6vw, 80px) clamp(16px, 5vw, 64px); box-sizing: border-box; }
+.lp h2 { font-size: clamp(26px, 3vw, 38px); font-weight: 800; margin: 0 0 28px; letter-spacing: -0.01em; }
+
+.lp-facts { border-top: 1px solid #3A4046; }
+.lp-facts dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin: 0; }
+.lp-facts dt { font-size: clamp(36px, 4.4vw, 56px); font-weight: 800; color: var(--amber); line-height: 1; }
+.lp-facts dd { margin: 10px 0 0; color: #D9DCD6; line-height: 1.45; font-size: 17px; max-width: 30ch; }
+
+.lp-steps ol { list-style: none; counter-reset: s; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding: 0; margin: 0; }
+.lp-steps li { counter-increment: s; background: var(--asphalt-2); border-radius: 10px; padding: 22px; }
+.lp-steps li::before { content: counter(s); display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--white); color: var(--asphalt); font-weight: 800; margin-bottom: 14px; }
+.lp-steps h3 { margin: 0 0 8px; font-size: 21px; } .lp-steps p { margin: 0; color: #D9DCD6; line-height: 1.5; }
+
+.lp .lp-rule { background: var(--white); color: var(--asphalt); border-radius: 18px; }
+.lp-rule h2 { max-width: 22ch; }
+.lp-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lp-flow div { padding: 0 24px 0 0; display: grid; gap: 8px; align-content: start; }
+.lp-flow div + div { border-left: 3px solid var(--asphalt); padding-left: 24px; }
+.lp-flow b { font-size: 22px; font-weight: 800; color: var(--green); } .lp-flow span { line-height: 1.5; }
+
+.lp-surfaces ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.lp-surfaces a { display: grid; gap: 6px; padding: 18px; border-radius: 10px; background: var(--asphalt-2); text-decoration: none; height: 100%; box-sizing: border-box; }
+.lp-surfaces a:hover { background: #343A40; } .lp-surfaces b { font-size: 19px; } .lp-surfaces span { color: #CDD1CC; line-height: 1.45; }
+.lp-small { color: var(--mute); margin-top: 16px; font-size: 15px; }
+.lp-foot { padding: 32px clamp(16px, 5vw, 64px) 48px; color: var(--mute); border-top: 1px solid #3A4046; max-width: 1180px; margin: 0 auto; font-size: 15px; line-height: 1.5; box-sizing: border-box; }
+
+@media (max-width: 860px) {
+  .lp-hero, .lp-facts dl, .lp-steps ol, .lp-flow, .lp-surfaces ul { grid-template-columns: 1fr; }
+  .lp-flow div + div { border-left: 0; border-top: 3px solid var(--asphalt); padding: 16px 0 0; margin-top: 16px; }
+}
