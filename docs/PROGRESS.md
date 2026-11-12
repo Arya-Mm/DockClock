@@ -51,3 +51,4 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
 - Webhook note: the quick tunnel failed (Cloudflare API timeout). A mis-registered webhook was deleted (f107914c0868c). Webhook 4LX331612L6716300 still points at the old tunnel URL.
 - Tunnel restored: stolen-niagara-ata-wells.trycloudflare.com. Webhook 4LX331612L6716300 repointed by PATCH (ca5930958eaf9), keeping its id. Simulated PAYMENT.CAPTURE.COMPLETED (ca59309fb2ce1) delivered: POST /api/webhooks/paypal 200, signature verified, deduped (simulator reuses its event id).
 - scripts/register-webhook.ts now repoints PAYPAL_WEBHOOK_ID instead of creating a new webhook, and refuses the api.trycloudflare.com host.
+- `pnpm tunnel` (scripts/tunnel.ts) supervises cloudflared and repoints webhook 4LX331612L6716300 on every new URL. Proven by killing cloudflared: it restarted in 2 s, came up at a new URL and repointed (f616490873acb, then f35948466a1b3).

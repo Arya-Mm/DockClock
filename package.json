@@ -17,7 +17,8 @@
     "db:seed": "pnpm --filter @dockclock/db seed",
     "worker": "pnpm --filter @dockclock/web worker",
     "reconcile": "pnpm --filter @dockclock/web reconcile",
-    "seed:reauth": "pnpm --filter @dockclock/web seed:reauth"
+    "seed:reauth": "pnpm --filter @dockclock/web seed:reauth",
+    "tunnel": "tsx --env-file=.env scripts/tunnel.ts"
   },
   "devDependencies": {
     "@types/node": "^24",
