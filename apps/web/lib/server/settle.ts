@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma, sha256Json, type Prisma } from "@dockclock/db";
-import { reconcileTimeline, planSettlement, pausedIntervalsFor, applyAcceptedOffer, nextSteps, authState, type OfferKind, type EvidenceEvent, type Step, type LoadState, type SettlementPlan } from "@dockclock/core";
+import { reconcileTimeline, planSettlement, pausedIntervalsFor, isPsd2Country, applyAcceptedOffer, nextSteps, authState, type OfferKind, type EvidenceEvent, type Step, type LoadState, type SettlementPlan } from "@dockclock/core";
 import { getLoad, contractOf, moveState, evidenceOf } from "./loads";
 import { runSteps, notify, type StepResult } from "./executor";
 import { DomainError } from "./http";
@@ -20,7 +20,8 @@ export async function settleLoad(loadId: string, nowMs = Date.now()) {
   const events = evidenceOf(load, nowMs);
   const timeline = reconcileTimeline(events);
   const contract = contractOf(load.contractVersion.terms);
-  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE"),
+  const psd2 = isPsd2Country(await payerCountry(loadId));
+  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE"), payerIsPsd2: psd2,
     // Damage from the gate-cam diff, priced by the tariff in core (never by the vision model).
     lineItems: isOn("VISION") ? (await damageFor(loadId)).items : [],
     // T12: contract closed hours in the facility's zone, non-billable.
@@ -44,6 +45,13 @@ export async function settleLoad(loadId: string, nowMs = Date.now()) {
   const steps = await runSteps(loadId, nextSteps(plan, auth, { type: "START" }), plan, nowMs);
   if (locked && steps.some((s) => s.step.do === "CAPTURE" && s.status === "DONE")) await prisma.offer.updateMany({ where: { id: locked.id, status: "ACCEPTED" }, data: { status: "SETTLED" } });
   return { plan, planHash: planRow.hash, planVersion: planRow.version, steps };
+}
+
+/** M5: payer country from the stored PayPal order/authorize response (no extra API call). */
+async function payerCountry(loadId: string): Promise<string | null> {
+  const op = await prisma.payPalOp.findFirst({ where: { loadId, operation: { in: ["AUTHORIZE", "ORDER", "ORDER_VAULTED"] }, status: "SUCCEEDED" }, orderBy: { createdAt: "desc" }, select: { response: true } });
+  const r = op?.response as { payer?: { address?: { country_code?: string } }; payment_source?: { paypal?: { address?: { country_code?: string } } } } | null;
+  return r?.payment_source?.paypal?.address?.country_code ?? r?.payer?.address?.country_code ?? null;
 }
 
 async function savePlan(loadId: string, plan: SettlementPlan) {

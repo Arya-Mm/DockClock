@@ -6,7 +6,10 @@ import assert from "node:assert/strict";
 import { prisma } from "@dockclock/db";
 import { DEMO_CONTRACT } from "@dockclock/core";
 import { proposeOffer, acceptOffer, revokeMandate, lockedOfferFor, spentToday } from "../lib/server/negotiation";
-import { verifyChain } from "../lib/server/chain";
+import { verifyChain, appendAction } from "../lib/server/chain";
+import { verifyReceipt } from "../lib/server/driver";
+import { creditAnomaly } from "../lib/server/negotiation";
+import { sha256Json } from "@dockclock/db";
 
 const on = process.env.RUN_SANDBOX === "1";
 const now = Date.now();
@@ -104,6 +107,29 @@ test("synthetic loads never consume a real mandate's daily budget", { skip: !on 
   const o = await proposeOffer(id, "WAIT_GUARANTEED", now);
   assert.equal((await acceptOffer(o.id, { version: o.version, planHash: o.planHash }, "HUMAN", now)).status, "ACCEPTED");
   assert.equal(await spentToday("M-SHIPPER", now), before);
+});
+
+test("F5/F6: a receipt rewritten in the DB (body and hash together) no longer verifies", { skip: !on }, async () => {
+  const id = await truckAtDock();
+  const body = { loadId: id, plan: { driverPayoutCents: 4387 } };
+  const slug = `rt${now.toString(36)}${n}`;
+  await prisma.receipt.create({ data: { loadId: id, auditHash: sha256Json(body), publicSlug: slug, body } });
+  await appendAction({ agent: "SHIPPER_TREASURY", action: "RECEIPT", verdict: "ALLOWED", payload: { loadId: id, auditHash: sha256Json(body), slug } });
+  assert.equal((await verifyReceipt(slug))!.ok, true);
+  const forged = { loadId: id, plan: { driverPayoutCents: 90000 } };
+  await prisma.receipt.update({ where: { publicSlug: slug }, data: { body: forged, auditHash: sha256Json(forged) } });
+  const v = (await verifyReceipt(slug))!;
+  assert.equal(v.recomputed, v.receipt.auditHash, "row is self-consistent");
+  assert.equal(v.ok, false, "but the chain anchor still holds the original hash");
+});
+
+test("A12: repeated facility credits to one carrier are flagged", { skip: !on }, async () => {
+  const id = await truckAtDock(30_000, "ELD geofence entry", false);
+  try {
+    const load = await prisma.load.findUniqueOrThrow({ where: { id } });
+    for (let i = 0; i < 3; i++) await prisma.offer.create({ data: { id: `RT-OF-${now.toString(36)}-${i}`, version: i + 1, loadId: id, fromAgent: "FACILITY", toAgent: "CARRIER", kind: "SLOT_SWAP_WITH_CREDIT", priceCents: 500, ttlMs: 1, expiresAt: new Date(now), rationale: "rt", contractVersionId: load.contractVersionId, planHash: "a".repeat(64), status: "SETTLED", acceptedAt: new Date(now) } });
+    assert.match((await creditAnomaly(load.facilityId, load.carrierId, 500, now)) ?? "", /credits from/);
+  } finally { await prisma.load.update({ where: { id }, data: { synthetic: true } }); }
 });
 
 test("hash chain still verifies after every red-team write", { skip: !on }, async () => {

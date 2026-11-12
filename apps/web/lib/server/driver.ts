@@ -6,7 +6,7 @@ import { chargeForDwell, deriveGeofenceEvents, reconcileTimeline, type OfferKind
 import { getLoad, contractOf, moveState, evidenceOf } from "./loads";
 import { acceptOffer } from "./negotiation";
 import { settleLoad } from "./settle";
-import { appendAction } from "./chain";
+import { appendAction, verifyChain } from "./chain";
 import { notify } from "./executor";
 import { DomainError, fail, requireOps } from "./http";
 import { isOn } from "../flags";
@@ -153,12 +153,23 @@ export async function ensureReceipt(loadId: string) {
     paypal: ops,
   };
   const auditHash = sha256Json(body);
-  return prisma.receipt.upsert({ where: { auditHash }, update: {}, create: { loadId, auditHash, publicSlug: randomBytes(9).toString("base64url"), body } });
+  const receipt = await prisma.receipt.upsert({ where: { auditHash }, update: {}, create: { loadId, auditHash, publicSlug: randomBytes(9).toString("base64url"), body } });
+  // F5/F6: anchor the receipt hash in the append-only agent_action chain, so editing the receipt row (body and
+  // hash together) no longer verifies: the chain still holds the original hash.
+  const anchored = await prisma.agentAction.findFirst({ where: { action: "RECEIPT", payload: { path: ["auditHash"], equals: auditHash } } });
+  if (!anchored) await appendAction({ agent: "SHIPPER_TREASURY", action: "RECEIPT", verdict: "ALLOWED", payload: { loadId, auditHash, slug: receipt.publicSlug } });
+  return receipt;
 }
 
 /** Public verify: recompute the hash from the stored body. */
 export async function verifyReceipt(slug: string) {
   const r = await prisma.receipt.findUnique({ where: { publicSlug: slug } });
   if (!r) return null;
-  return { receipt: r, recomputed: sha256Json(r.body), ok: sha256Json(r.body) === r.auditHash };
+  const recomputed = sha256Json(r.body);
+  const [anchor, chain] = await Promise.all([
+    prisma.agentAction.findFirst({ where: { action: "RECEIPT", payload: { path: ["slug"], equals: slug } }, select: { seq: true, payload: true } }),
+    verifyChain(),
+  ]);
+  const anchoredHash = (anchor?.payload as { auditHash?: string } | undefined)?.auditHash ?? null;
+  return { receipt: r, recomputed, anchoredHash, anchorSeq: anchor?.seq ?? null, chainOk: chain.ok, ok: recomputed === r.auditHash && anchoredHash === recomputed && chain.ok };
 }

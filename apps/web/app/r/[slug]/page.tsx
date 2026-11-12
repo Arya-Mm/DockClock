@@ -63,6 +63,7 @@ export default async function ReceiptPage(props: PageProps<"/r/[slug]">) {
           <p>Contract {b.contractVersionId}, plan version {b.planVersion} ({b.planHash.slice(0, 16)}…)</p>
           <p>Audit hash {v.receipt.auditHash}</p>
           <p>Recomputed {v.recomputed}</p>
+          <p>Anchored in agent ledger row {v.anchorSeq ?? "none"} ({v.chainOk ? "chain intact" : "chain broken"}), see /verify</p>
         </section>
       </main>
     </div>

@@ -87,3 +87,15 @@ test("T13: two stops of one trip settle independently (distinct PayPal keys per 
   assert.notEqual(s1, s2);
   assert.equal(paypalRequestId("TRIP9-S1", "CAPTURE", "settle-AUTH1"), s1, "same stop, same key: replay-safe");
 });
+
+import { isPsd2Country } from "../src/settlement";
+test("M5: an EEA/UK payer is never over-captured", () => {
+  assert.equal(isPsd2Country("de"), true);
+  assert.equal(isPsd2Country("US"), false);
+  assert.equal(isPsd2Country(null), false);
+  const tl = reconcileTimeline([{ source: "ELD_GEOFENCE", kind: "ARRIVAL", utcMs: 0, confidence: 1, citation: "a" }, { source: "ELD_GEOFENCE", kind: "DEPARTURE", utcMs: 400 * 60_000, confidence: 1, citation: "d" }]);
+  const eu = planSettlement({ loadId: "EU", appointmentMs: 0, timeline: tl, authorizedCents: 7_500, payerIsPsd2: true }, C);
+  const us = planSettlement({ loadId: "US", appointmentMs: 0, timeline: tl, authorizedCents: 7_500, payerIsPsd2: false }, C);
+  assert.equal(eu.captureCents, 7_500);
+  assert.ok(us.captureCents > 7_500);
+});

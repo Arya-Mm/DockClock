@@ -12,6 +12,7 @@ import { appendAction } from "./chain";
 import { getLoad, contractOf, facilityDwells, evidenceOf } from "./loads";
 import { recorded } from "./ops";
 import { notify } from "./executor";
+import { llmAllowed } from "./llm-budget";
 import { DomainError } from "./http";
 
 // Lock waiters queue behind a slow cross-region holder; Prisma's 5s default would abort the loser of a double accept.
@@ -26,9 +27,10 @@ const usd = (c: number) => `${c < 0 ? "-" : ""}$${(Math.abs(c) / 100).toFixed(2)
 /** Simulated ELD clock for the demo carrier (synthetic, labelled in UI). */
 export const DEMO_CARRIER_CLOCK: CarrierClock = { hosDrivingLeftMin: 420, hosWindowLeftMin: 300, nextApptInMin: 330, deadheadMin: 180, revenuePerHourCents: 8_500, nextLoadRevenueCents: 140_000 };
 
-function llm(): Llm | null {
+async function llm(): Promise<Llm | null> {
   const key = process.env.GEMINI_API_KEY;
-  return key && process.env.LLM_PROVIDER !== "none" ? geminiLlm(key, process.env.GEMINI_MODEL ?? "gemini-3.8-flash") : null;
+  if (!key || process.env.LLM_PROVIDER === "none" || !(await llmAllowed())) return null; // F4 spend cap -> deterministic defaults
+  return geminiLlm(key, process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite");
 }
 
 type LoadFull = Awaited<ReturnType<typeof getLoad>>;
@@ -116,7 +118,7 @@ export async function negotiate(loadId: string, nowMs = Date.now()) {
   const ctx = pricingContext(load, contract, nowMs);
   const facilityMandate = await mandateFor("FACILITY");
   const ceiling = holdCeiling(load);
-  const model = llm();
+  const model = await llm();
   const rounds: RoundLog[] = [];
   const declined = new Set<OfferKind>();
   let lastCarrierText = "";
@@ -241,11 +243,12 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
   if (verdict.verdict === "ALLOWED" && g.funder === "SHIPPER_TREASURY") {
     const t = await decide({ agent: "SHIPPER_TREASURY", template: PROMPTS.SHIPPER_TREASURY, menu: ["APPROVE", "ESCALATE"] as const,
       facts: `${pre.kind} ${usd(pre.priceCents)} from the PayPal hold (capture ceiling ${usd(holdCeiling(g.load) ?? 0)}). Mandate guard: ALLOWED.`,
-      defaultAction: "APPROVE", defaultRationale: "Guard passed; engine price within mandate.", llm: llm() });
+      defaultAction: "APPROVE", defaultRationale: "Guard passed; engine price within mandate.", llm: await llm() });
     treasury = { action: t.action, promptHash: t.promptHash, source: t.source };
     if (t.action === "ESCALATE") verdict = { verdict: "ESCALATED", codes: [], reasons: ["Shipper Treasury Agent escalated to a human"] };
   }
 
+  const anomaly = pre.kind === "SLOT_SWAP_WITH_CREDIT" ? await creditAnomaly(g.load.facilityId, g.load.carrierId, pre.priceCents, nowMs) : null;
   const result = await prisma.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ status: string; version: number; planHash: string }[]>`SELECT status::text AS status, version, "planHash" FROM "Offer" WHERE id = ${offerId} FOR UPDATE`;
     const row = locked[0]!;
@@ -260,7 +263,7 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
       else if (spent + pre.priceCents > m.dailyCapCents) verdict = { verdict: "ESCALATED", codes: ["DAILY_CAP"], reasons: [`${usd(spent + pre.priceCents)} today over daily cap ${usd(m.dailyCapCents)}`] };
     }
     await appendAction({ agent: g.funder, action: "ACCEPT", offerId, mandateId: g.mandate?.id, verdict: verdict.verdict, reasons: verdict.reasons, promptHash: treasury?.promptHash,
-      payload: { loadId: pre.loadId, kind: pre.kind, cents: pre.priceCents, by, claim, codes: verdict.codes, treasury } }, tx);
+      payload: { loadId: pre.loadId, kind: pre.kind, cents: pre.priceCents, by, claim, codes: verdict.codes, treasury, anomaly } }, tx);
     if (verdict.verdict !== "ALLOWED") return "REFUSED" as const;
     await tx.offer.update({ where: { id: offerId }, data: { status: "ACCEPTED", acceptedAt: new Date(nowMs) } });
     return "ACCEPTED" as const;
@@ -271,6 +274,7 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
     const cur = await prisma.offer.findUnique({ where: { id: offerId }, select: { status: true } });
     return { status: "ACCEPTED", offerId, idempotent: true, settlement: cur?.status === "ACCEPTED" ? await settleOffer(offerId, nowMs) : null };
   }
+  if (anomaly && result === "ACCEPTED") await notify(pre.loadId, "OPS", "MANUAL_REVIEW", `A12 credit anomaly: ${anomaly}`);
   if (result === "REFUSED") {
     if (verdict.verdict === "ESCALATED") await notify(pre.loadId, "OPS", "MANUAL_REVIEW", `offer ${offerId} escalated: ${verdict.reasons.join("; ")}`);
     return { status: verdict.verdict === "ESCALATED" ? "ESCALATED" : "BLOCKED", offerId, verdict };
@@ -338,6 +342,20 @@ export async function captureOfferOrder(offerId: string) {
   if (capture?.status === "COMPLETED") await prisma.offer.updateMany({ where: { id: offerId, status: "ACCEPTED" }, data: { status: "SETTLED" } });
   await appendAction({ agent: "CARRIER", action: "PAY", offerId, mandateId: g.mandate?.id, verdict: "ALLOWED", payload: { loadId: offer.loadId, orderId, captureId: capture?.id ?? null, status: capture?.status ?? r.data.status, debugId: r.debugId, requestId } });
   return { orderId, captureId: capture?.id ?? null, status: capture?.status ?? r.data.status, debugId: r.debugId };
+}
+
+/**
+ * A12 collusion signal: a facility paying the same carrier unusually often or much today. The engine band and the daily
+ * cap already bound each credit; this flags the pattern in the ledger and to ops without blocking the payment.
+ */
+const ANOMALY_CREDITS_PER_DAY = 3, ANOMALY_CENTS_PER_DAY = 10_000;
+export async function creditAnomaly(facilityId: string, carrierId: string, cents: number, nowMs: number): Promise<string | null> {
+  const day = new Date(nowMs); day.setUTCHours(0, 0, 0, 0);
+  const prior = await prisma.offer.findMany({ where: { kind: "SLOT_SWAP_WITH_CREDIT", status: { in: ["ACCEPTED", "SETTLED"] }, acceptedAt: { gte: day }, load: { facilityId, carrierId, synthetic: false } }, select: { priceCents: true } });
+  const n = prior.length + 1, total = prior.reduce((s, o) => s + o.priceCents, 0) + cents;
+  if (n > ANOMALY_CREDITS_PER_DAY) return `${n} credits from ${facilityId} to ${carrierId} today`;
+  if (total > ANOMALY_CENTS_PER_DAY) return `$${(total / 100).toFixed(2)} credited from ${facilityId} to ${carrierId} today`;
+  return null;
 }
 
 /** Human kill switch (A8): revoked mandates are refused at accept and again at execution. */

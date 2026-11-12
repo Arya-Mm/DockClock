@@ -228,6 +228,10 @@ export function planSettlement(input: SettlementInput, c: AccessorialContract): 
   };
 }
 
+/** M5: EEA + UK payers fall under PSD2 strong authentication, so no overcapture. ISO 3166-1 alpha-2. */
+const PSD2 = new Set(["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE","IS","LI","NO","GB"]);
+export const isPsd2Country = (cc: string | null | undefined) => !!cc && PSD2.has(cc.toUpperCase());
+
 /**
  * T12: contract closed windows (local wall clock, IANA zone) -> UTC intervals covering [fromMs, toMs].
  * Each day is converted separately, so DST days get the right offset. Windows that cross midnight are not supported.

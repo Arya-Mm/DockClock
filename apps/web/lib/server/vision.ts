@@ -7,6 +7,7 @@ import { diffDamage, damageLineItems, localWallClockToUtc, type Detection, type 
 import { geminiVision } from "@dockclock/agents";
 import { getLoad } from "./loads";
 import { notify } from "./executor";
+import { llmAllowed } from "./llm-budget";
 import { DomainError } from "./http";
 
 /**
@@ -91,6 +92,7 @@ export async function scanImage(loadId: string, b: z.infer<typeof ScanBody>) {
 
   try {
     if (!key) throw new Error("no GEMINI_API_KEY");
+    if (!(await llmAllowed())) throw new Error("LLM daily cap reached (F4)");
     const schema = b.kind === "BOL" ? BolRead : GateRead;
     let prompt = PROMPTS[b.kind];
     for (let attempt = 1; ; attempt++) {

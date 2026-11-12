@@ -56,3 +56,5 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 35. **Evidence uploads.** ELD pings and gate-cam images need the ops key (hardware or ops). The driver may upload only a BOL photo, which is weak evidence (confidence ≤0.6), so hardware wins (T6).
 36. **Vision model `gemini-3.1-flash-lite`.** 3.8-flash was rate-limited (429/503) on the free tier. Boxes in pixels are rescaled; an inconsistent box makes the defect confidence 0 (review); there is one schema-retry round.
 37. **Synthetic loads never consume a real mandate's daily budget** (red-team and seed data).
+38. **Invoicing and refunds use raw REST, not the PayPal Agent Toolkit.** Every call has to go through `recorded()` with a stage-scoped PayPal-Request-Id; the toolkit hides the request id. Toolkit not added (BUILD_KIT Phase 2 allows "raw REST otherwise").
+39. **A lost dispute is reversed by PayPal itself.** We record the reversal; recovering the carrier's share is a human step (notification).

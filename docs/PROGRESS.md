@@ -89,3 +89,12 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
     - Accepted the $22.50 credit: payout W3U77WVV9BT2S (f134768fd7978).
     - Geofence exit captured $70.50 ($32.50 detention + $38.00 missing strap); driver $67.25, payout sent; receipt + share shown.
 - Tests: core 52, agents 10, db 2, paypal 3, red-team 10/10.
+
+## Audit of Phases 0-4 against BUILD_KIT + PLAN §6 (2026-11-12)
+Gaps found and closed:
+- M5: payer country read from the stored PayPal order; EEA/UK payers are never over-captured (isPsd2Country + test).
+- M15: CUSTOMER.DISPUTE.RESOLVED with RESOLVED_BUYER_FAVOUR writes an idempotent DISPUTE_REVERSAL ledger row and tells ops to recover the carrier share.
+- A12: facility-to-carrier credit anomaly flag (more than 3 credits or more than $100 per day) in the ACCEPT ledger row, plus an ops review.
+- F4: LLM_DAILY_SPEND_CAP_USD enforced. Over the cap, agents use deterministic defaults and vision goes to review.
+- F5/F6: receipt hash anchored in the append-only agent chain. Verify needs body = hash = anchor and an intact chain. The 2 existing receipts were backfilled (rows marked backfill).
+Tests: core 53, agents 10, db 2, paypal 3, red-team 12/12.

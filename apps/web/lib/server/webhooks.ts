@@ -117,11 +117,25 @@ async function dispatch(type: string, r: Resource): Promise<string> {
       await applyOutcome(load.id, { type: "DISPUTE_CREATED", disputeId });
       return `evidence flow started for ${load.id}`;
     }
+    case "CUSTOMER.DISPUTE.RESOLVED": {
+      // M15: PayPal moves the money itself when a dispute is lost; we write the reversal into our ledger (idempotent
+      // by dispute id) and tell ops to recover the carrier's share. A won dispute just closes.
+      const disputeId = str(r.dispute_id);
+      const outcome = str((r.dispute_outcome as Resource | undefined)?.outcome_code) ?? "UNKNOWN";
+      const load = disputeId ? await loadBy({ disputeId }) : null;
+      if (!load || !disputeId) return "ignored: dispute not on a DockClock load";
+      if (outcome !== "RESOLVED_BUYER_FAVOUR") { await notify(load.id, "OPS", "NOTIFY", `dispute ${disputeId} resolved: ${outcome}`); return `closed ${disputeId}: ${outcome}`; }
+      const amt = (r.dispute_amount as Resource | undefined)?.value;
+      const cents = typeof amt === "string" && /^\d+(\.\d{1,2})?$/.test(amt) ? Math.round(Number(amt) * 100) : null; // PayPal decimal string -> cents at the boundary
+      await prisma.payPalOp.upsert({ where: { requestId: `reversal-${disputeId}` }, update: {}, create: {
+        requestId: `reversal-${disputeId}`, operation: "DISPUTE_REVERSAL", loadId: load.id, amountCents: cents, status: "SUCCEEDED", paypalId: disputeId, response: r as Prisma.InputJsonValue } });
+      await notify(load.id, "OPS", "MANUAL_REVIEW", `dispute ${disputeId} lost: ${cents === null ? "amount unknown" : `$${(cents / 100).toFixed(2)}`} reversed by PayPal; recover carrier share (M15)`);
+      return `reversal recorded for ${load.id}`;
+    }
     case "VAULT.PAYMENT-TOKEN.CREATED":
     case "INVOICING.INVOICE.PAID":
     case "PAYMENT.AUTHORIZATION.CREATED":
     case "PAYMENT.CAPTURE.REFUNDED":
-    case "CUSTOMER.DISPUTE.RESOLVED":
       await notify(null, "OPS", "NOTIFY", `${type} ${id ?? ""}`.trim());
       return "recorded";
     default:
