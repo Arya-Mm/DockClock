@@ -11,14 +11,22 @@ import { damageFor } from "./vision";
 export type { StepResult };
 
 /** load -> reconcileTimeline -> planSettlement -> nextSteps(START) -> execute. Webhooks / worker continue from WAIT_FOR_WEBHOOK. */
-export async function settleLoad(loadId: string, nowMs = Date.now()) {
+export async function settleLoad(loadId: string, nowMs = Date.now(), opts: { approvedBy?: string } = {}) {
   const load = await getLoad(loadId);
   const from = load.state as LoadState;
   if (from !== "DEPARTED" && from !== "NEEDS_REVIEW" && from !== "SETTLING") throw new DomainError("state_conflict", `cannot settle from ${from} (T10: no departure, no settlement)`);
   if (!load.authorizationId || !load.holdCents || !load.authorizedAt || !load.lastAuthorizedAt) throw new DomainError("no_hold", "load has no authorization");
 
   const events = evidenceOf(load, nowMs);
-  const timeline = reconcileTimeline(events);
+  const reconciled = reconcileTimeline(events);
+  // Review queue (PLAN §7.1): a named human may release a review hold, but only when arrival AND departure exist,
+  // so the engine still computes the amount from evidence. The approval is written into the plan's audit trail.
+  if (opts.approvedBy && reconciled.requiresReview && (reconciled.arrivalMs === null || reconciled.departureMs === null)) {
+    throw new DomainError("cannot_approve", "no arrival or departure time to bill from; add evidence before approving");
+  }
+  const timeline = opts.approvedBy && reconciled.requiresReview
+    ? { ...reconciled, requiresReview: false, basis: [...reconciled.basis, `Review approved by ${opts.approvedBy} at ${new Date(nowMs).toISOString()} (flags: ${reconciled.flags.join(", ") || "none"})`] }
+    : reconciled;
   const contract = contractOf(load.contractVersion.terms);
   const psd2 = isPsd2Country(await payerCountry(loadId));
   const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE"), payerIsPsd2: psd2,

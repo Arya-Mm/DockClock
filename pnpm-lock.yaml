@@ -45,6 +45,9 @@ importers:
       '@dockclock/paypal':
         specifier: workspace:*
         version: link:../../packages/paypal
+      ag-charts-enterprise:
+        specifier: 14.2.0
+        version: 14.2.0
       ag-grid-community:
         specifier: 36.2.0
         version: 36.2.0

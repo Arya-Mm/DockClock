@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   return (
     <Dashboard
       data={data}
-      licenseKey={process.env.AG_STUDIO}
+      licenseKey={process.env.AG_STUDIO_LICENSE_KEY ?? process.env.AG_STUDIO}
       aiModels={aiEnabled() ? aiModels() : undefined}
     />
   );
