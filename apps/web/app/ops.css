@@ -2,6 +2,8 @@
 .op { --bg: #0B0F17; --panel: #111827; --panel-2: #161E2E; --line: #263043; --ink: #F1F5F9; --mute: #94A3B8; --go: #22C55E; --go-ink: #052E16;
   --warn: #F59E0B; --bad: #EF4444; --ring: #F8FAFC;
   min-height: 100vh; width: 100%; background: var(--bg); color: var(--ink); font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; }
+/* Inside the shadcn shell: inherit its surface, no second full-height page. */
+.op-embedded { min-height: 0; background: transparent; --bg: transparent; --panel: var(--card); --panel-2: var(--muted); --line: var(--border); --ink: var(--foreground); --mute: var(--muted-foreground); font-family: inherit; }
 .op *, .op *::before { box-sizing: border-box; }
 .op code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; color: #CBD5E1; }
 .op a:focus-visible, .op button:focus-visible, .op select:focus-visible, .op input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

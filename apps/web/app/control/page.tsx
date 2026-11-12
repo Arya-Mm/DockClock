@@ -1,8 +1,11 @@
-import Link from "next/link";
+import { prisma } from "@dockclock/db";
 import { controlData } from "@/lib/server/control";
 import { requireOpsPage } from "@/lib/server/ops-page";
-import { KillSwitch, LiveRefresh, Reissue, ResetDemo } from "./actions";
-import "./control.css";
+import { AppShell } from "@/components/app-shell";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { KillSwitch, LiveRefresh, OpsChart, Reissue, ResetDemo } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "DockClock control room" };
@@ -11,103 +14,128 @@ const usd = (c: number) => `$${(c / 100).toLocaleString("en-US", { minimumFracti
 const ago = (iso: string | null, now: number) => { if (!iso) return "never"; const m = Math.round((now - Date.parse(iso)) / 60_000); return m < 1 ? "just now" : m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 const hhmm = (iso: string) => new Date(iso).toISOString().slice(11, 16) + " UTC";
 
-// Load lifecycle in order (core ledger state machine); the pipeline bar follows it.
-const PIPE: [string, string, string][] = [
-  ["DISPATCHED", "Dispatched", "Load created, no hold yet"], ["AWAITING_PAYER", "Awaiting payer", "Waiting for the shipper to approve the PayPal hold"],
-  ["AUTHORIZED", "Hold placed", "PayPal authorization in place"], ["AT_FACILITY", "At the dock", "Arrived; the wait clock is running"],
-  ["DEPARTED", "Departed", "Left the geofence; settlement is next"], ["NEEDS_REVIEW", "Needs review", "Evidence too weak: a human decides before money moves"],
-  ["SETTLING", "Settling", "Executor is calling PayPal"], ["CAPTURED", "Captured", "Money captured; payout pending"],
-  ["PAID_OUT", "Paid out", "Driver paid"], ["VOIDED", "Voided", "Nothing owed; hold released"],
-  ["INVOICED_SPILLOVER", "Invoiced", "Above the hold: the rest was invoiced"], ["DISPUTED", "Disputed", "Shipper opened a dispute; evidence submitted"],
+// Load lifecycle in order (core ledger state machine).
+const PIPE: [string, string, string, string][] = [
+  ["DISPATCHED", "Dispatched", "Load created, no hold yet", "bg-slate-500"], ["AWAITING_PAYER", "Awaiting payer", "Waiting for the shipper to approve the hold", "bg-slate-400"],
+  ["AUTHORIZED", "Hold placed", "PayPal authorization in place", "bg-blue-500"], ["AT_FACILITY", "At the dock", "Arrived; wait clock running", "bg-amber-500"],
+  ["DEPARTED", "Departed", "Left the geofence; settlement next", "bg-violet-500"], ["NEEDS_REVIEW", "Needs review", "A human decides before money moves", "bg-orange-600"],
+  ["SETTLING", "Settling", "Executor is calling PayPal", "bg-cyan-600"], ["CAPTURED", "Captured", "Captured; payout pending", "bg-teal-600"],
+  ["PAID_OUT", "Paid out", "Driver paid", "bg-emerald-500"], ["VOIDED", "Voided", "Nothing owed; hold released", "bg-zinc-500"],
+  ["INVOICED_SPILLOVER", "Invoiced", "Above the hold: rest invoiced", "bg-pink-600"], ["DISPUTED", "Disputed", "Dispute open; evidence submitted", "bg-red-600"],
 ];
+const statusVariant = (s: string) => (s === "SUCCEEDED" ? "default" : s === "FAILED" ? "destructive" : "secondary") as "default" | "destructive" | "secondary";
 
-/** Control room: the whole system on one screen for an operator (ops key required). Every number is a database or PayPal record. */
+/** Control room: the whole system on one screen (shadcn/ui). Every number is a database or PayPal record. */
 export default async function ControlPage() {
   await requireOpsPage("/control");
-  const d = await controlData();
+  const [d, opCounts] = await Promise.all([controlData(), prisma.payPalOp.groupBy({ by: ["operation"], where: { status: "SUCCEEDED" }, _count: true })]);
   const now = Date.now();
-  const totalLoads = Object.values(d.pipeline).reduce((a, b) => a + b, 0);
+  const total = Object.values(d.pipeline).reduce((a, b) => a + b, 0);
   const blocked = (d.verdicts24h.BLOCKED ?? 0) + (d.verdicts24h.ESCALATED ?? 0);
+  const chart = opCounts.map((o) => ({ op: o.operation.replaceAll("_", " ").toLowerCase(), count: o._count })).sort((a, b) => b.count - a.count);
+  const kpis = [
+    { t: "Captured", v: usd(d.kpi.capturedCents), s: `${d.kpi.captures} captures`, tip: "Sum of successful PayPal captures" },
+    { t: "Paid to drivers", v: usd(d.kpi.paidOutCents), s: `${d.kpi.payouts} payouts`, tip: "Sum of successful PayPal payouts" },
+    { t: "Holds placed", v: String(d.kpi.holdsPlaced), s: "authorizations", tip: "PayPal authorizations (payer-approved or vaulted)" },
+    { t: "Queue depth", v: String(d.health.queue.total), s: `${d.health.queue.review} need review`, tip: "Loads with work waiting" },
+    { t: "Guard refusals · 24 h", v: String(blocked), s: `${d.verdicts24h.ALLOWED ?? 0} allowed`, tip: "Agent actions refused or escalated", warn: blocked > 0 },
+    { t: "Disputes defended", v: String(d.kpi.evidence), s: "evidence packs", tip: "Dispute evidence submitted to PayPal" },
+  ];
   return (
-    <main className="cr">
-      <header className="cr-top">
-        <div className="cr-title"><b>DockClock</b><span>Control room</span></div>
-        <div className="cr-status">
-          <span className="cr-chip" title="PayPal environment the app is locked to"><i className="cr-dot cr-dot-on" />PayPal sandbox</span>
-          <span className="cr-chip" title="Hash chain over every agent action; a rewritten row breaks it"><i className={d.chainOk ? "cr-dot cr-dot-on" : "cr-dot cr-dot-bad"} />Ledger chain {d.chainOk ? "verified" : "BROKEN"}</span>
-          <LiveRefresh />
-          <ResetDemo />
-        </div>
-      </header>
-
-      <nav className="cr-nav" aria-label="Surfaces">
-        {[["/judge", "Judge"], ["/dispatch", "Dispatch"], ["/dock", "Dock board"], ["/cockpit", "Cockpit"], ["/dashboard", "Analytics"], ["/verify", "Verify"], ["/health", "Health"]].map(([h, l]) => <Link key={h} href={h!}>{l}</Link>)}
-      </nav>
-
-      <section className="cr-kpis" aria-label="Money moved in the sandbox">
-        <div title="Sum of successful PayPal captures (settlements and accepted offers)"><span>Captured</span><b>{usd(d.kpi.capturedCents)}</b><small>{d.kpi.captures} captures</small></div>
-        <div title="Sum of successful PayPal payouts to drivers and carriers"><span>Paid to drivers</span><b>{usd(d.kpi.paidOutCents)}</b><small>{d.kpi.payouts} payouts</small></div>
-        <div title="PayPal authorizations placed (approved by the payer or from the vault)"><span>Holds placed</span><b>{d.kpi.holdsPlaced}</b><small>authorizations</small></div>
-        <div title="Loads with work waiting: payout pending, settling, review, disputes, open offers"><span>Queue depth</span><b>{d.health.queue.total}</b><small>{d.health.queue.review} need review</small></div>
-        <div title="Agent actions the mandate guard refused or sent to a human in the last 24 h"><span>Guard refusals (24 h)</span><b className={blocked ? "cr-warn" : ""}>{blocked}</b><small>{d.verdicts24h.ALLOWED ?? 0} allowed</small></div>
-        <div title="Dispute evidence packs submitted to PayPal"><span>Disputes defended</span><b>{d.kpi.evidence}</b><small>evidence packs</small></div>
-      </section>
-
-      <section className="cr-panel" aria-labelledby="pipe">
-        <h2 id="pipe">Load pipeline <small>real loads by state</small></h2>
-        <div className="cr-bar" role="img" aria-label="Share of loads in each state">
-          {PIPE.filter(([k]) => d.pipeline[k]).map(([k, l, tip]) => <span key={k} className={`cr-seg cr-s-${k}`} style={{ flexGrow: d.pipeline[k] }} title={`${l}: ${d.pipeline[k]} (${tip})`} />)}
-        </div>
-        <ul className="cr-legend">{PIPE.map(([k, l, tip]) => <li key={k} title={tip}><i className={`cr-s-${k}`} />{l}<b>{d.pipeline[k] ?? 0}</b></li>)}</ul>
-        <p className="cr-mute">{totalLoads} real loads. Offers: {Object.entries(d.offers).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(", ") || "none"}.</p>
-      </section>
-
-      <div className="cr-grid">
-        <section className="cr-panel" aria-labelledby="pp">
-          <h2 id="pp">PayPal feed <small>latest calls with debug_id</small></h2>
-          <table>
-            <thead><tr><th>Time</th><th>Call</th><th className="cr-num">Amount</th><th>Status</th><th>debug_id</th></tr></thead>
-            <tbody>{d.ops.map((o) => (
-              <tr key={o.at + o.op + o.paypalId}>
-                <td>{hhmm(o.at)}</td><td title={o.paypalId ? `PayPal id ${o.paypalId}${o.loadId ? `, load ${o.loadId}` : ""}` : undefined}>{o.op}</td>
-                <td className="cr-num">{o.usd === null ? "" : `$${o.usd.toFixed(2)}`}</td>
-                <td><span className={`cr-tag cr-tag-${o.status}`}>{o.status.toLowerCase()}</span></td><td><code>{o.debugId ?? ""}</code></td>
-              </tr>))}</tbody>
-          </table>
-        </section>
-
-        <section className="cr-panel" aria-labelledby="sys">
-          <h2 id="sys">System <small>free-tier deploy</small></h2>
-          <dl className="cr-sys">
-            <div title="Worker jobs: capture and payout polls, reauth watchdog, offer expiry, evidence retry"><dt>Worker</dt><dd>{d.health.worker.mode}, last tick {ago(d.health.worker.lastTickAt, now)}{d.health.worker.lastTickAt ? ` (${d.health.worker.lastTickMs} ms)` : ""}</dd></div>
-            <div><dt>Worker error</dt><dd className={d.health.worker.lastError ? "cr-warn" : ""}>{d.health.worker.lastError ?? "none"}</dd></div>
-            <div title="Nightly reconcile against PayPal Transaction Search (GitHub Actions cron)"><dt>Reconcile</dt><dd>{ago(d.health.cron.lastReconcileAt, now)}</dd></div>
-            <div title="Last PayPal webhook received (signature verified, deduped by event id)"><dt>Last webhook</dt><dd>{ago(d.health.lastWebhookAt, now)}</dd></div>
-            <div><dt>Database</dt><dd>{d.health.dbMs} ms round trip</dd></div>
-            <div title="Captured with payout still pending, disputed, and open offers"><dt>Waiting</dt><dd>{d.health.queue.awaitingPayout} payout, {d.health.queue.disputed} disputed, {d.health.queue.openOffers} open offers</dd></div>
-          </dl>
-          <h3>Recent loads</h3>
-          <table>
-            <thead><tr><th>Load</th><th>Facility</th><th>State</th><th className="cr-num">Hold</th></tr></thead>
-            <tbody>{d.loads.map((l) => <tr key={l.id}><td title={`${l.carrier}, updated ${ago(l.updatedAt, now)}`}><code>{l.id}</code></td><td>{l.facility}</td><td><span className={`cr-tag cr-s-${l.state}`}>{l.state.replaceAll("_", " ").toLowerCase()}</span></td><td className="cr-num">{l.holdUsd ? `$${l.holdUsd.toFixed(2)}` : ""}</td></tr>)}</tbody>
-          </table>
-        </section>
+    <AppShell title="Control room" aside={<>
+      <Badge variant={d.chainOk ? "outline" : "destructive"} title="Hash chain over every agent action; a rewritten row breaks it">Ledger chain {d.chainOk ? "verified" : "broken"}</Badge>
+      <LiveRefresh /><ResetDemo /></>}>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        {kpis.map((k) => (
+          <Card key={k.t} size="sm" title={k.tip}>
+            <CardHeader><CardDescription>{k.t}</CardDescription>
+              <CardTitle className={`text-2xl tabular-nums ${k.warn ? "text-amber-400" : ""}`}>{k.v}</CardTitle></CardHeader>
+            <CardContent className="text-xs text-muted-foreground">{k.s}</CardContent>
+          </Card>
+        ))}
       </div>
 
-      <section className="cr-panel" aria-labelledby="md">
-        <h2 id="md">Agent mandates <small>the kill switch</small></h2>
-        <p className="cr-mute">An agent can only spend inside its mandate. Revoking it stops the agent at accept and again at execution. The newest mandate per agent is the one in force.</p>
-        <table>
-          <thead><tr><th>Agent</th><th>Mandate</th><th>Allowed actions</th><th className="cr-num">Per action</th><th className="cr-num">Per day</th><th>Status</th><th /></tr></thead>
-          <tbody>{d.mandates.map((m) => (
-            <tr key={m.id} className={m.revokedAt ? "cr-row-off" : undefined}>
-              <td><b>{m.agent.replaceAll("_", " ").toLowerCase()}</b></td><td><code>{m.id}</code></td><td>{m.actions}</td>
-              <td className="cr-num">${m.perActionUsd.toFixed(2)}</td><td className="cr-num">${m.dailyUsd.toFixed(2)}</td>
-              <td>{m.revokedAt ? <span className="cr-tag cr-tag-FAILED" title={`Revoked ${ago(m.revokedAt, now)}`}>revoked</span> : m.expired ? <span className="cr-tag">expired</span> : <span className="cr-tag cr-tag-SUCCEEDED">active</span>}</td>
-              <td>{m.revokedAt ? <Reissue id={m.id} agent={m.agent} /> : !m.expired && <KillSwitch id={m.id} agent={m.agent} />}</td>
-            </tr>))}</tbody>
-        </table>
-      </section>
-    </main>
+      <Card>
+        <CardHeader><CardTitle>Load pipeline</CardTitle><CardDescription>{total} real loads by state. Offers: {Object.entries(d.offers).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(", ") || "none"}.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-muted" role="img" aria-label="Share of loads in each state">
+            {PIPE.filter(([k]) => d.pipeline[k]).map(([k, l, tip, c]) => <span key={k} className={c} style={{ flexGrow: d.pipeline[k], flexBasis: 0 }} title={`${l}: ${d.pipeline[k]} (${tip})`} />)}
+          </div>
+          <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4 xl:grid-cols-6">
+            {PIPE.map(([k, l, tip, c]) => <li key={k} className="flex items-center gap-2 text-muted-foreground" title={tip}><span className={`size-2.5 rounded-sm ${c}`} />{l}<b className="ml-auto tabular-nums text-foreground">{d.pipeline[k] ?? 0}</b></li>)}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Card className="xl:col-span-3">
+          <CardHeader><CardTitle>PayPal feed</CardTitle><CardDescription>Latest sandbox calls with their debug_id</CardDescription></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Call</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead><TableHead>debug_id</TableHead></TableRow></TableHeader>
+              <TableBody>{d.ops.map((o) => (
+                <TableRow key={o.at + o.op + o.paypalId}>
+                  <TableCell className="text-muted-foreground">{hhmm(o.at)}</TableCell>
+                  <TableCell title={o.paypalId ? `PayPal id ${o.paypalId}${o.loadId ? `, load ${o.loadId}` : ""}` : undefined}>{o.op}</TableCell>
+                  <TableCell className="text-right tabular-nums">{o.usd === null ? "" : `$${o.usd.toFixed(2)}`}</TableCell>
+                  <TableCell><Badge variant={statusVariant(o.status)}>{o.status.toLowerCase()}</Badge></TableCell>
+                  <TableCell><code className="text-xs text-muted-foreground">{o.debugId ?? ""}</code></TableCell>
+                </TableRow>))}</TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <div className="grid gap-4 xl:col-span-2">
+          <Card>
+            <CardHeader><CardTitle>PayPal calls by type</CardTitle><CardDescription>All successful sandbox calls</CardDescription></CardHeader>
+            <CardContent><OpsChart data={chart} /></CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>System</CardTitle><CardDescription>Free-tier deploy: worker runs in the web service</CardDescription></CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Worker</dt><dd title="Capture/payout polls, reauth watchdog, offer expiry, evidence retry">last tick {ago(d.health.worker.lastTickAt, now)}{d.health.worker.lastTickAt ? ` · ${d.health.worker.lastTickMs} ms` : ""}</dd>
+                <dt className="text-muted-foreground">Worker error</dt><dd className={d.health.worker.lastError ? "text-amber-400" : ""}>{d.health.worker.lastError ?? "none"}</dd>
+                <dt className="text-muted-foreground">Reconcile</dt><dd title="Nightly vs PayPal Transaction Search">{ago(d.health.cron.lastReconcileAt, now)}</dd>
+                <dt className="text-muted-foreground">Last webhook</dt><dd title="Signature verified, deduped by event id">{ago(d.health.lastWebhookAt, now)}</dd>
+                <dt className="text-muted-foreground">Database</dt><dd>{d.health.dbMs} ms round trip</dd>
+              </dl>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Card className="xl:col-span-3">
+          <CardHeader><CardTitle>Agent mandates</CardTitle><CardDescription>An agent can only spend inside its mandate. Revoke stops it at accept and again at execution; the newest mandate per agent is in force.</CardDescription></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead>Mandate</TableHead><TableHead className="text-right">Per action</TableHead><TableHead className="text-right">Per day</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+              <TableBody>{d.mandates.map((m) => (
+                <TableRow key={m.id} className={m.revokedAt ? "text-muted-foreground" : undefined}>
+                  <TableCell className="font-medium capitalize" title={m.actions}>{m.agent.replaceAll("_", " ").toLowerCase()}</TableCell>
+                  <TableCell><code className="text-xs">{m.id}</code></TableCell>
+                  <TableCell className="text-right tabular-nums">${m.perActionUsd.toFixed(2)}</TableCell><TableCell className="text-right tabular-nums">${m.dailyUsd.toFixed(2)}</TableCell>
+                  <TableCell>{m.revokedAt ? <Badge variant="destructive" title={`Revoked ${ago(m.revokedAt, now)}`}>revoked</Badge> : m.expired ? <Badge variant="secondary">expired</Badge> : <Badge>active</Badge>}</TableCell>
+                  <TableCell className="text-right">{m.revokedAt ? <Reissue id={m.id} agent={m.agent} /> : !m.expired && <KillSwitch id={m.id} agent={m.agent} />}</TableCell>
+                </TableRow>))}</TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <Card className="xl:col-span-2">
+          <CardHeader><CardTitle>Recent loads</CardTitle><CardDescription>Real sandbox loads, newest first</CardDescription></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Load</TableHead><TableHead>State</TableHead><TableHead className="text-right">Hold</TableHead></TableRow></TableHeader>
+              <TableBody>{d.loads.map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell title={`${l.facility} · ${l.carrier} · updated ${ago(l.updatedAt, now)}`}><code className="text-xs">{l.id}</code></TableCell>
+                  <TableCell><Badge variant="outline" className="capitalize">{l.state.replaceAll("_", " ").toLowerCase()}</Badge></TableCell>
+                  <TableCell className="text-right tabular-nums">{l.holdUsd ? `$${l.holdUsd.toFixed(2)}` : ""}</TableCell>
+                </TableRow>))}</TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
   );
 }
