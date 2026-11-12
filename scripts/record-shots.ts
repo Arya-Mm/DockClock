@@ -1,6 +1,6 @@
 // Records one 1920x1080 .webm per video shot (docs/SUBMISSION.md shot list) for editing.
 // Usage: BASE_URL=http://localhost:3000 OPS_KEY=... npx tsx scripts/record-shots.ts [shotName]
-// Read-only: no shot clicks a button that moves money. Money-moving moments are recorded by hand.
+// Read-only except 09-dispatch, which runs one real sandbox load end to end (vaulted hold, no PayPal popup).
 import { chromium, type Page } from "@playwright/test";
 import { mkdirSync, renameSync } from "node:fs";
 
@@ -36,6 +36,15 @@ const SHOTS: Record<string, (p: Page) => Promise<void>> = {
   "05-dashboard": async (p) => { await p.goto("/dashboard"); await pause(p, 10000); },
   "06-redteam": async (p) => { await p.goto("/judge"); await pause(p, 1500); await p.locator("#rt").scrollIntoViewIfNeeded(); await pause(p, 7000); },
   "07-health": async (p) => { await p.goto("/health"); await pause(p, 5000); },
+  "09-dispatch": async (p) => {
+    await p.goto("/dispatch"); await pause(p, 3000);
+    for (const name of ["1. Dispatch load", "2. Create hold", "3. Arrive + depart", "4. Settle"]) {
+      const b = p.getByRole("button", { name }); await b.hover(); await pause(p, 1200);
+      await b.click(); await p.waitForFunction((n) => ![...document.querySelectorAll("button")].find((x) => x.textContent === n && x.disabled === false && n === "1. Dispatch load") || true, name);
+      await pause(p, name === "4. Settle" ? 9000 : 5000);
+    }
+    await smoothScroll(p, 700, 4000); await pause(p, 2000);
+  },
   "08-control": async (p) => {
     await p.goto("/control"); await pause(p, 4000);
     for (const sel of [".cr-kpis > div:nth-child(1)", ".cr-kpis > div:nth-child(5)", ".cr-seg", "section[aria-labelledby=md] .cr-btn-danger"]) { await p.locator(sel).first().hover().catch(() => {}); await pause(p, 2200); }
