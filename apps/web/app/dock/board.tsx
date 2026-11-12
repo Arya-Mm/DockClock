@@ -1,7 +1,7 @@
 "use client";
 // Bryntum Scheduler (Community tier, free): resources = dock doors, events = trucks. Client-only (Bryntum needs the DOM).
 import "@bryntum/scheduler-community/scheduler.css";
-import "@bryntum/scheduler-community/svalbard.css";
+import "@bryntum/scheduler-community/svalbard-dark.css";
 import { useEffect, useMemo, useRef } from "react";
 import { BryntumScheduler } from "@bryntum/scheduler-react-community";
 import type { EventModel } from "@bryntum/scheduler-community";

@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@dockclock/db";
-import { breakEvenDwellMin, chargeForDwell, reconcileTimeline, type SettlementPlan } from "@dockclock/core";
+import { breakEvenDwellMin, chargeForDwell, reconcileTimeline, seedNetwork, DEMO_CONTRACT, type SettlementPlan } from "@dockclock/core";
 import { contractOf, evidenceOf } from "./loads";
 import { DomainError } from "./http";
 
@@ -51,7 +51,25 @@ export async function dockBoard(facilityId: string | null, nowMs = Date.now()): 
       name: l.id, carrierName: l.carrier.name, state: l.state, synthetic: l.synthetic, atDock, dwellMin,
       chargeCents: plan && !atDock ? plan.chargeCents : chargeForDwell(dwellMin, c), breakEvenMin: breakEvenDwellMin(c), tonuCents: c.tonuFlatCents, swapped: !!swap }];
   });
+  // Facilities with no real sandbox loads would show an empty board. Fill with that facility's synthetic network history
+  // (engine-settled rows from seedNetwork), re-dated onto the last 20 h at their real hour. Labelled synthetic, not draggable.
+  if (events.filter((e) => !e.synthetic).length < 3) events.push(...syntheticDay(fid, nowMs));
   return { facilityId: fid, facilityName: facility.name, facilities, doors: DOORS.map((d) => ({ id: d, name: `Door ${d.slice(2)}` })), events, serverNowMs: nowMs };
+}
+
+function syntheticDay(facilityId: string, nowMs: number): DockEvent[] {
+  const { ledger } = seedNetwork(DEMO_CONTRACT);
+  const c = DEMO_CONTRACT, today = new Date(nowMs); today.setUTCHours(0, 0, 0, 0);
+  return ledger.filter((r) => r.facilityId === facilityId && r.dwellMin >= 20).slice(0, 40).flatMap((r, i): DockEvent[] => {
+    const a = new Date(r.appointmentIso);
+    let start = today.getTime() + (a.getUTCHours() * 60 + a.getUTCMinutes()) * 60_000;
+    if (start > nowMs - 30 * 60_000) start -= 86_400_000; // these loads are finished: keep every bar in the past
+    const end = start + r.dwellMin * 60_000;
+    if (end > nowMs || start < nowMs - 20 * 3_600_000) return [];
+    return [{ id: `SYN-${r.loadId}`, resourceId: DOORS[i % DOORS.length]!, startDate: new Date(start).toISOString(), endDate: new Date(end).toISOString(),
+      name: r.loadId, carrierName: r.carrierName, state: r.needsReview ? "NEEDS_REVIEW" : r.capturedUsd > 0 ? "PAID_OUT" : "VOIDED", synthetic: true, atDock: false,
+      dwellMin: r.dwellMin, chargeCents: Math.round(r.chargeUsd * 100), breakEvenMin: breakEvenDwellMin(c), tonuCents: c.tonuFlatCents, swapped: false }];
+  }).slice(0, 18);
 }
 
 /** Live re-price for a hand-dragged bar. Read-only: nothing is saved and no money moves (PLAN §7.2). */

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { judgeData } from "@/lib/server/judge";
 import "./judge.css";
+import { OpsShell } from "../ops-shell";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "DockClock judge mode" };
@@ -14,17 +15,8 @@ const t = (iso: string) => new Date(iso).toISOString().replace("T", " ").slice(0
 export default async function JudgePage() {
   const d = await judgeData();
   return (
-    <main className="jg">
-      <header className="jg-head">
-        <h1>DockClock judge mode</h1>
-        <p>A PayPal authorization hold is a spending mandate for an AI agent. The AI reads, code decides, PayPal executes.</p>
-        <p className="jg-mute">PayPal sandbox only. Engine plans run on a simulated clock; live rows are real sandbox calls with their <code>debug_id</code>.</p>
-        <nav className="jg-nav" aria-label="Live surfaces">
-          <Link href="/dispatch">Dispatch</Link><Link href="/dock">Dock board</Link><Link href="/driver">Driver app</Link>
-          <Link href="/cockpit">Cockpit</Link><Link href="/dashboard">Studio analytics</Link><Link href="/verify">Verify a receipt</Link><Link href="/health">Health</Link>
-        </nav>
-      </header>
-
+    <OpsShell active="/judge" title="Judge mode" sub="A PayPal authorization hold is a spending mandate for an AI agent. Engine plans run on a simulated clock; live rows are real PayPal sandbox calls with their debug_id.">
+    <div className="jg">
       <section aria-labelledby="sc">
         <h2 id="sc">Scenarios</h2>
         <ol className="jg-list">
@@ -74,6 +66,7 @@ export default async function JudgePage() {
           <tbody>{d.webhooks.map((w) => <tr key={w.type + w.at}><td>{t(w.at)}</td><td>{w.type}</td><td>{w.processed ? "yes" : "queued"}</td></tr>)}</tbody>
         </table>
       </section>
-    </main>
+    </div>
+    </OpsShell>
   );
 }

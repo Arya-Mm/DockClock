@@ -10,7 +10,7 @@ const errorsOf = (page: Page) => { const errs: string[] = []; page.on("pageerror
 test("judge mode loads without errors and lists all 8 scenarios", async ({ page }) => {
   const errs = errorsOf(page);
   await page.goto("/judge");
-  await expect(page.getByRole("heading", { name: "DockClock judge mode" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Judge mode", exact: true })).toBeVisible();
   for (const [i, title] of SCENARIOS.entries()) await expect(page.getByRole("heading", { name: `${i + 1}. ${title}` })).toBeVisible();
   expect(errs).toEqual([]);
 });

@@ -147,49 +147,66 @@ export function DispatchConsole({ facilities }: { facilities: Facility[] }) {
   });
 
   const state = view?.load.state;
-  const btn = "rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-40";
+  // Step status: done once the load has moved past it, current when its button is live.
+  const ORDER = ["DISPATCHED", "AWAITING_PAYER", "AUTHORIZED", "AT_FACILITY", "DEPARTED", "SETTLING", "CAPTURED", "PAID_OUT", "VOIDED", "INVOICED_SPILLOVER", "NEEDS_REVIEW", "DISPUTED"];
+  const at = state ? ORDER.indexOf(state) : -1;
+  const stepState = (doneFrom: number, live: boolean) => (at >= doneFrom ? "done" : live ? "current" : "locked");
+  const steps = [
+    { n: 1, t: "Dispatch load", d: "Create the load at the chosen dock.", s: stepState(0, !state),
+      btn: <button className="op-btn op-btn-primary" disabled={busy} onClick={dispatch} title="Creates a real load for this facility">1. Dispatch load</button> },
+    { n: 2, t: "Place the hold", d: "Engine sizes it; PayPal authorizes from the vault, or the payer approves once.", s: stepState(2, state === "DISPATCHED" || state === "AWAITING_PAYER"),
+      btn: <>
+        <button className="op-btn op-btn-primary" disabled={busy || state !== "DISPATCHED"} onClick={createHold} title="Places the PayPal authorization hold sized by the engine">2. Create hold</button>
+        {orderId && <button className="op-btn op-btn-paypal" disabled={!sessionReady} onClick={approve} title="Opens PayPal so the payer approves the hold once">Approve with PayPal</button>}
+      </> },
+    { n: 3, t: "Truck waits", d: "Geofence and gate system report arrival and departure.", s: stepState(4, state === "AUTHORIZED"),
+      btn: <>
+        <label className="op-field" title="Simulated time between arrival and departure">Dwell <input type="number" min={0} max={720} value={dwell} onChange={(e) => setDwell(Number(e.target.value))} /> min</label>
+        <button className="op-btn op-btn-primary" disabled={busy || state !== "AUTHORIZED"} onClick={evidence} title="Posts ELD + gate arrival and departure evidence">3. Arrive + depart</button>
+        <button className="op-btn" disabled={busy || state !== "AUTHORIZED"} onClick={voidIt} title="Releases the hold: nothing is owed">Void hold</button>
+      </> },
+    { n: 4, t: "Settle", d: "Capture, pay the driver, invoice any spillover.", s: stepState(6, state === "DEPARTED"),
+      btn: <button className="op-btn op-btn-primary" disabled={busy || state !== "DEPARTED"} onClick={settle} title="Runs the settlement plan against PayPal">4. Settle</button> },
+  ];
   return (
-    <div className="space-y-4">
-      <section className="flex flex-wrap items-end gap-3">
-        <label className="text-sm">Facility
-          <select className="ml-2 rounded border px-2 py-1" value={facilityId} onChange={(e) => setFacilityId(e.target.value)}>
+    <div className="op-stack">
+      <section className="op-card op-row">
+        <label className="op-field" title="Dock where the truck is booked">Facility
+          <select value={facilityId} onChange={(e) => setFacilityId(e.target.value)}>
             {facilities.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
-        <button className={btn} disabled={busy} onClick={dispatch}>1. Dispatch load</button>
-        <button className={btn} disabled={busy || state !== "DISPATCHED"} onClick={createHold}>2. Create hold</button>
-        {orderId && <button className="rounded bg-[#ffc439] px-3 py-2 text-sm font-semibold disabled:opacity-40" disabled={!sessionReady} onClick={approve}>Approve with PayPal</button>}
+        {view && <span className="op-meta">Load <code>{view.load.id}</code> <span className={`op-tag op-s-${view.load.state}`}>{view.load.state.replaceAll("_", " ").toLowerCase()}</span>{busy && <span className="op-spin" aria-label="Working" />}</span>}
       </section>
 
+      <ol className="op-steps">
+        {steps.map((s) => (
+          <li key={s.n} className={`op-step op-step-${s.s}`} aria-current={s.s === "current" ? "step" : undefined}>
+            <div className="op-step-head"><span className="op-step-n" aria-hidden="true">{s.s === "done" ? "✓" : s.n}</span><div><b>{s.t}</b><p>{s.d}</p></div></div>
+            <div className="op-step-act">{s.btn}</div>
+          </li>
+        ))}
+      </ol>
+
       {hold && (
-        <section className="rounded border p-3 text-sm">
-          <div className="font-medium">Engine hold: {usd(hold.holdCents)} (P90 dwell {hold.predictedP90DwellMin}m)</div>
-          <p className="text-neutral-600">{hold.explanation}</p>
+        <section className="op-card">
+          <h2>Engine hold <span className="op-big">{usd(hold.holdCents)}</span></h2>
+          <p className="op-mute">P90 dwell {hold.predictedP90DwellMin} min. {hold.explanation}</p>
         </section>
       )}
 
-      <section className="flex flex-wrap items-end gap-3">
-        <label className="text-sm">Simulated dwell (min)
-          <input type="number" className="ml-2 w-20 rounded border px-2 py-1" value={dwell} onChange={(e) => setDwell(Number(e.target.value))} />
-        </label>
-        <button className={btn} disabled={busy || state !== "AUTHORIZED"} onClick={evidence}>3. Arrive + depart</button>
-        <button className={btn} disabled={busy || state !== "DEPARTED"} onClick={settle}>4. Settle</button>
-        <button className={btn} disabled={busy || state !== "AUTHORIZED"} onClick={voidIt}>Void hold</button>
-      </section>
-
       {view && (
-        <section className="rounded border p-3 text-sm">
-          <div>Load <b>{view.load.id}</b> state <b>{view.load.state}</b>
-            {view.load.authorizationId && <> · auth {view.load.authorizationId}</>}
-            {view.load.vaultId && <> · vault {view.load.vaultId}</>}
-          </div>
-          <table className="mt-2 w-full text-xs">
-            <thead><tr className="text-left"><th>op</th><th>status</th><th>amount</th><th>paypal id</th><th>debug_id</th></tr></thead>
+        <section className="op-card">
+          <h2>PayPal calls for this load</h2>
+          <p className="op-mute">{view.load.authorizationId && <>Authorization <code>{view.load.authorizationId}</code> </>}{view.load.vaultId && <>· vault <code>{view.load.vaultId}</code></>}</p>
+          <table className="op-table">
+            <thead><tr><th>Call</th><th>Status</th><th className="op-num">Amount</th><th>PayPal id</th><th>debug_id</th></tr></thead>
             <tbody>
+              {view.ops.length === 0 && <tr><td colSpan={5} className="op-mute">No PayPal calls yet. Place the hold to start.</td></tr>}
               {view.ops.map((o) => (
                 <tr key={o.requestId}>
-                  <td>{o.operation}</td><td>{o.status}</td><td>{o.amountCents != null ? usd(o.amountCents) : ""}</td>
-                  <td>{o.paypalId}</td><td className="font-mono">{o.debugId}</td>
+                  <td>{o.operation}</td><td><span className={`op-tag op-t-${o.status}`}>{o.status.toLowerCase()}</span></td>
+                  <td className="op-num">{o.amountCents != null ? usd(o.amountCents) : ""}</td><td><code>{o.paypalId}</code></td><td><code>{o.debugId}</code></td>
                 </tr>
               ))}
             </tbody>
@@ -197,7 +214,10 @@ export function DispatchConsole({ facilities }: { facilities: Facility[] }) {
         </section>
       )}
 
-      <pre className="h-64 overflow-auto rounded bg-neutral-950 p-3 text-xs text-green-300">{log.join("\n")}</pre>
+      <section className="op-card">
+        <h2>Event log</h2>
+        <pre className="op-log" aria-live="polite">{log.length ? log.join("\n") : "Nothing yet. Dispatch a load to begin."}</pre>
+      </section>
     </div>
   );
 }

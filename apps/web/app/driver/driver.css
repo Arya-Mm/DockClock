@@ -26,6 +26,7 @@
 .rd-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .rd-brand { font-weight: 800; letter-spacing: 0.01em; }
 .rd-lang { min-height: 48px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--rd-fog); background: transparent; color: var(--rd-white); font: inherit; }
+.rd-lang option { color: #1F2328; background: #FFFFFF; } /* native list is white: keep the options readable */
 
 /* The guide sign: the one memorable element. */
 .rd-sign { background: var(--rd-green); border-radius: 18px; padding: 6px; box-shadow: 0 2px 0 #00000040; }
