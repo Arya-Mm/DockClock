@@ -58,3 +58,5 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 37. **Synthetic loads never consume a real mandate's daily budget** (red-team and seed data).
 38. **Invoicing and refunds use raw REST, not the PayPal Agent Toolkit.** Every call has to go through `recorded()` with a stage-scoped PayPal-Request-Id; the toolkit hides the request id. Toolkit not added (BUILD_KIT Phase 2 allows "raw REST otherwise").
 39. **A lost dispute is reversed by PayPal itself.** We record the reversal; recovering the carrier's share is a human step (notification).
+40. **The Studio AI stays on free Gemini.** One analyst agent, lite models rotated on 429, paced calls, query-shape instructions. Studio's 5-agent harness made 15-25 calls per question, which the free tier cannot serve. The user declined paid Gemini.
+41. **The analyst cannot add widgets.** Studio's add_widget tool leaves widgets unconfigured, so a model-added chart showed "No data". Answers come from executeQuery; the built-in report already charts both questions.

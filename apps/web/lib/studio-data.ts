@@ -34,7 +34,7 @@ export async function getStudioData(): Promise<StudioData> {
   const agentActions: StudioAgentRow[] = actions.map((a) => ({
     seq: a.seq, agent: a.agent, action: a.action, verdict: a.verdict,
     // First reason, without the amount, so "by reason" groups cleanly.
-    reason: a.reasons ? a.reasons.split("; ")[0]!.replace(/\$[\d,.]+/g, "$").slice(0, 80) : "none",
+    reason: a.reasons ? a.reasons.split("; ")[0]!.replace(/\$[\d,.]+\s*/g, "").replace(/\s{2,}/g, " ").replace(/^today /, "").trim().slice(0, 80) : "none",
     amountUsd: a.cents === null ? 0 : a.cents / 100, mandateId: a.mandateId ?? "none", createdAt: a.createdAt,
   }));
   return { asOf: new Date().toISOString(), ledger, facilities, agentActions };

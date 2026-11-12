@@ -23,6 +23,21 @@ const SIG = "|sig:";
 // Gemini 3 thought signatures, keyed by the tool callId Studio preserves across turns (it does not keep our item ids).
 // shortcut: in-process map; on a multi-instance deploy, move this to a shared store (Redis/DB) keyed the same way.
 const signatures = new Map<string, string>();
+// Free-tier pacing: Gemini free models allow a few requests per minute. Space calls out and, on a 429, wait the
+// retryDelay Gemini returns (capped) before one retry, so the dashboard stays on the free tier instead of failing.
+const MIN_GAP_MS = Number(process.env.GEMINI_MIN_GAP_MS ?? 4_500);
+let nextSlot = 0;
+async function paced<T>(fn: () => Promise<T>): Promise<T> {
+  const now = Date.now(), at = Math.max(now, nextSlot);
+  nextSlot = at + MIN_GAP_MS;
+  if (at > now) await new Promise((ok) => setTimeout(ok, at - now));
+  return fn();
+}
+function retryDelayMs(body: unknown): number {
+  const d = (body as { error?: { details?: { retryDelay?: string }[] } })?.error?.details?.find((x) => x.retryDelay)?.retryDelay;
+  const s = d ? Number.parseFloat(d) : NaN;
+  return Number.isFinite(s) ? Math.min(30_000, Math.ceil(s * 1000) + 500) : 5_000;
+}
 const SKIP_SIGNATURE = "skip_thought_signature_validator"; // documented placeholder when a signature is unavailable
 
 function toGemini(items: Record<string, unknown>[]) {
@@ -68,8 +83,14 @@ export const POST = handle(async (req: Request) => {
   if (!parsed.success) return fail(422, "validation_error", "bad AI request");
   const r = parsed.data;
   const { contents, system } = toGemini(r.input);
+  if (process.env.NODE_ENV !== "production") for (const it of r.input.slice(-2)) {
+    if (it.type === "function_call" && it.name === "execute_query") console.log(`[ai/gemini] execute_query args ${String(it.arguments).slice(0, 600)}`);
+    if (it.type === "function_call_output") console.log(`[ai/gemini] tool output ${String(it.output).slice(0, 400)}`);
+  }
   if (process.env.NODE_ENV !== "production") console.log(`[ai/gemini] in: ${r.input.map((i) => `${i.type}${i.role ? `/${i.role}` : ""}${i.type === "function_call" ? `(${i.name}${"result" in i ? ",result" : ""})` : ""}${i.type === "function_call_output" ? `(${String(i.output ?? "").length}b)` : ""}`).join(" ")} | gemini roles: ${contents.map((c) => c.role[0] + c.parts.length).join(",")}`);
-  const model = process.env.GEMINI_STUDIO_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite";
+  // Free tier only: each free model has its own per-minute quota, so a 429 moves the turn to the next free model.
+  const models = [...new Set([process.env.GEMINI_STUDIO_MODEL ?? process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite", ...(process.env.GEMINI_FREE_FALLBACKS ?? "gemini-3.5-flash-lite,gemini-flash-lite-latest").split(",").map((m) => m.trim()).filter(Boolean)])];
+  let model = models[0]!;
   const tc = r.toolChoice;
   const sys = [r.instructions ?? "", ...system].filter(Boolean).join("\n\n");
   const body = {
@@ -81,13 +102,29 @@ export const POST = handle(async (req: Request) => {
     } : {}),
     generationConfig: { temperature: 0.2, ...(r.responseFormat.type === "json" ? { responseMimeType: "application/json", ...(r.responseFormat.schema ? { responseJsonSchema: r.responseFormat.schema } : {}) } : {}) },
   };
+  // Thought signatures are model-bound: when a turn moves to another model, replay calls with the documented placeholder.
+  const bodyFor = (m: string) => m === models[0] ? body : { ...body, contents: body.contents.map((c) => ({ ...c, parts: c.parts.map((pt) => ("functionCall" in pt && pt.functionCall ? { ...pt, thoughtSignature: SKIP_SIGNATURE } : pt)) })) };
   const call = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body), signal: AbortSignal.timeout(120_000), // multi-tool Studio turns on flash can exceed 60 s
+    method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(bodyFor(model)), signal: AbortSignal.timeout(120_000), // multi-tool Studio turns on flash can exceed 60 s
   });
-  let res = await call();
-  // Free-tier Gemini returns 429/503 under load: one retry after a short pause, then fail closed.
-  if (res.status === 429 || res.status >= 500) { await new Promise((ok) => setTimeout(ok, 1_500)); res = await call(); }
-  const j = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: Part[] } }[]; error?: { message?: string } };
+  let res = await paced(call);
+  let j = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: Part[] } }[]; error?: { message?: string } };
+  for (let i = 1; (res.status === 429 || res.status >= 500) && i < models.length; i++) {
+    const quota = (j as { error?: { details?: { violations?: { quotaId?: string }[] }[] } }).error?.details?.find((d) => d.violations)?.violations?.[0]?.quotaId ?? "";
+    console.warn(`[ai/gemini] ${model} ${res.status} ${quota}: switching to free model ${models[i]}`);
+    model = models[i]!;
+    res = await paced(call);
+    j = (await res.json().catch(() => ({}))) as typeof j;
+  }
+  if (res.status === 429) {
+    // Every free model is at its per-minute limit: wait out Gemini's own retryDelay once, then fail closed.
+    const wait = retryDelayMs(j);
+    console.warn(`[ai/gemini] all free models rate-limited, waiting ${wait} ms`);
+    await new Promise((ok) => setTimeout(ok, wait));
+    model = models[0]!;
+    res = await paced(call);
+    j = (await res.json().catch(() => ({}))) as typeof j;
+  }
   if (!res.ok) {
     console.warn(`[ai/gemini] ${model} ${res.status}: ${(j.error?.message ?? "").slice(0, 300)}`);
     return fail(502, "gemini_error", `Gemini ${res.status}: ${(j.error?.message ?? "").slice(0, 200)}`);

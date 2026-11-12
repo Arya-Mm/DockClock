@@ -125,3 +125,12 @@ Tests: core 53, agents 10, db 2, paypal 3, red-team 12/12.
   - Live run: the lead delegated, the Data agent read the schema, ran queries and created a calculated column (appointment_month).
   - It did not finish: free-tier Gemini hit 60 s+ turns and the per-minute quota (429), because one question costs 15-25 model calls across 5 agents.
   - Needs a billing-enabled Gemini key (or a faster model) to complete.
+- Free-tier NL queries (no paid Gemini):
+  - One analyst agent (directLlmRunner, maxTurns 8) instead of 5 delegating agents.
+  - gemini-3.1-flash-lite, with rotation to the free gemini-3.5-flash-lite / gemini-flash-lite-latest on 429.
+  - Server-side pacing (GEMINI_MIN_GAP_MS) and Gemini's retryDelay honoured.
+  - Instructions carry the exact typed aggregation shape (axes.dimensions, found in agApiQuery.d.ts; a top-level dimensions key is ignored).
+  - The add/position-widget tools were removed because they created empty charts.
+  - Live answers:
+    - "Which facilities leak the most money this month?" -> Carson Import Terminal $7,402.50, Tolleson Building Supply $6,625.00 (matches the ledger grid; 1 query).
+    - "Show blocked agent actions by reason." -> mandate revoked 12, stale offer (A3) 12, over hold ceiling 7, over daily cap 2 (1 query).
