@@ -11,8 +11,8 @@ export interface LiveOp { at: string; operation: string; status: string; usd: nu
 export interface JudgeScenario { n: number; id: string; title: string; story: string; tryAt: { label: string; href: string }; engine: ScenarioResult | null; agentic?: string[]; live: LiveOp[]; liveNote: string }
 
 const OPS_FOR: Record<string, string[]> = {
-  "early-dent": ["VOID"], "reefer-spike": ["CAPTURE", "PAYOUT"], overage: ["CAPTURE", "INVOICE"], reauth: ["REAUTHORIZE"],
-  spoof: [], dispute: ["EVIDENCE", "REFUND"], "dock-jam": ["ORDER_OFFER", "CAPTURE_OFFER", "PAYOUT_OFFER"], strap: ["ORDER", "PART_ORDER"],
+  "early-dent": ["VOID"], "reefer-spike": ["CAPTURE", "PAYOUT", "TRACKING"], overage: ["INVOICE_SPILL", "CAPTURE"], reauth: ["REAUTHORIZE"],
+  spoof: [], dispute: ["EVIDENCE", "REFUND"], "dock-jam": ["ORDER_OFFER", "CAPTURE_OFFER", "PAYOUT_OFFER"], strap: ["ORDER", "PART_ORDER", "PART_CAPTURE"],
 };
 const TRY: Record<string, { label: string; href: string }> = {
   "early-dent": { label: "Dispatch console", href: "/dispatch" }, "reefer-spike": { label: "Dispatch console", href: "/dispatch" },

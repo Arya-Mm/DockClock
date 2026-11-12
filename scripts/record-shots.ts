@@ -36,6 +36,11 @@ const SHOTS: Record<string, (p: Page) => Promise<void>> = {
   "05-dashboard": async (p) => { await p.goto("/dashboard"); await pause(p, 10000); },
   "06-redteam": async (p) => { await p.goto("/judge"); await pause(p, 1500); await p.locator("#rt").scrollIntoViewIfNeeded(); await pause(p, 7000); },
   "07-health": async (p) => { await p.goto("/health"); await pause(p, 5000); },
+  "08-control": async (p) => {
+    await p.goto("/control"); await pause(p, 4000);
+    for (const sel of [".cr-kpis > div:nth-child(1)", ".cr-kpis > div:nth-child(5)", ".cr-seg", "section[aria-labelledby=md] .cr-btn-danger"]) { await p.locator(sel).first().hover().catch(() => {}); await pause(p, 2200); }
+    await smoothScroll(p, 900, 4000); await pause(p, 2000);
+  },
 };
 
 async function main() {
