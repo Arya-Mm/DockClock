@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma, sha256Json } from "@dockclock/db";
 import {
   priceOffer, defaultOffer, rankOptions, tonuAdvice, chargeForDwell, maxCapturableCents, checkPayout, paypalRequestId,
-  OFFER_FUNDER, DEMO_FACILITY_ECONOMICS, type OfferKind, type PricingContext, type PricedOffer, type CarrierClock, type ValuationRow, type AccessorialContract,
+  reconcileTimeline, OFFER_FUNDER, DEMO_FACILITY_ECONOMICS, type EvidenceEvent, type OfferKind, type PricingContext, type PricedOffer, type CarrierClock, type ValuationRow, type AccessorialContract,
 } from "@dockclock/core";
 import { checkMandate, decide, geminiLlm, PROMPTS, Mandate as MandateSchema, type AgentKind, type Mandate, type GuardVerdict, type Llm } from "@dockclock/agents";
 import { payoutCarrier, createPurchaseOrder, captureOrder, approveLinkOf, type PayoutBatch, type Order } from "@dockclock/paypal";
@@ -34,8 +34,11 @@ function llm(): Llm | null {
 type LoadFull = Awaited<ReturnType<typeof getLoad>>;
 
 function pricingContext(load: LoadFull, contract: AccessorialContract, nowMs: number): PricingContext {
-  const arrival = load.evidence.filter((e) => e.kind === "ARRIVAL").map((e) => e.utcAt.getTime()).sort((a, b) => b - a)[0] ?? load.appointmentAt.getTime();
-  const waitedMin = Math.max(0, Math.floor((nowMs - arrival) / 60_000));
+  // Same clock as settlement and the driver app: reconciled arrival (not the latest arrival row), started no earlier
+  // than the appointment (T1).
+  const events: EvidenceEvent[] = load.evidence.map((e) => ({ source: e.source as EvidenceEvent["source"], kind: e.kind as EvidenceEvent["kind"], utcMs: e.utcAt.getTime(), confidence: e.confidence, citation: e.citation }));
+  const arrival = (events.length ? reconcileTimeline(events).arrivalMs : null) ?? nowMs;
+  const waitedMin = Math.max(0, Math.floor((nowMs - Math.max(arrival, load.appointmentAt.getTime())) / 60_000));
   const historicalDwellsMin = facilityDwells(load.facilityId);
   const final = tonuAdvice(waitedMin, historicalDwellsMin, contract).expectedFinalDwellMin ?? waitedMin + 60;
   const e = DEMO_FACILITY_ECONOMICS;
@@ -52,10 +55,12 @@ async function mandateFor(agent: AgentKind): Promise<Mandate | null> {
 }
 
 /** ALLOWED accepts today; `excludeOfferId` drops the offer being re-checked at execution so it is not counted twice. */
-async function spentToday(mandateId: string, nowMs: number, excludeOfferId?: string, db: Pick<typeof prisma, "agentAction"> = prisma): Promise<number> {
+export async function spentToday(mandateId: string, nowMs: number, excludeOfferId?: string, db: Pick<typeof prisma, "agentAction" | "offer"> = prisma): Promise<number> {
   const day = new Date(nowMs); day.setUTCHours(0, 0, 0, 0);
-  const rows = await db.agentAction.findMany({ where: { mandateId, verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day }, ...(excludeOfferId ? { NOT: { offerId: excludeOfferId } } : {}) }, select: { payload: true } });
-  return rows.reduce((s, r) => s + (Number((r.payload as { cents?: number }).cents) || 0), 0);
+  const rows = await db.agentAction.findMany({ where: { mandateId, verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day }, ...(excludeOfferId ? { NOT: { offerId: excludeOfferId } } : {}) }, select: { payload: true, offerId: true } });
+  // Accepts on synthetic loads (seed data, red-team runs) never consume a real mandate's budget.
+  const real = new Set((await db.offer.findMany({ where: { id: { in: rows.map((r) => r.offerId).filter((x): x is string => !!x) }, load: { synthetic: false } }, select: { id: true } })).map((o) => o.id));
+  return rows.filter((r) => r.offerId && real.has(r.offerId)).reduce((s, r) => s + (Number((r.payload as { cents?: number }).cents) || 0), 0);
 }
 
 function holdCeiling(load: LoadFull): number | null {
@@ -122,7 +127,7 @@ export async function negotiate(loadId: string, nowMs = Date.now()) {
       .filter((p): p is PricedOffer => !!p && (OFFER_FUNDER[p.kind] !== "SHIPPER" || p.priceCents <= (ceiling ?? -1)));
     if (!priced.length) break;
     const menu = priced.map((p) => p.kind) as [OfferKind, ...OfferKind[]];
-    const fallback = round === 1 ? defaultOffer(ctx, contract).kind : menu[0];
+    const fallback = round === 1 ? defaultOffer(ctx, contract)?.kind ?? menu[0] : menu[0];
     const fd = await decide({
       agent: "FACILITY", template: PROMPTS.FACILITY, menu, counterpartyText: lastCarrierText,
       facts: [`Truck waited ${ctx.waitedMin} min.`, ...priced.map((p) => `${p.kind}: ${usd(p.priceCents)} (${p.basis})`)].join("\n"),

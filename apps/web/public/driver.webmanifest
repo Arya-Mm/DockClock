@@ -1,0 +1,17 @@
+{
+ "name": "DockClock driver",
+ "short_name": "DockClock",
+ "start_url": "/driver",
+ "scope": "/driver",
+ "display": "standalone",
+ "background_color": "#2B2F33",
+ "theme_color": "#2B2F33",
+ "icons": [
+  {
+   "src": "/driver-icon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any maskable"
+  }
+ ]
+}

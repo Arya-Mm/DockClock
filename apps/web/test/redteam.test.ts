@@ -5,17 +5,17 @@ import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "@dockclock/db";
 import { DEMO_CONTRACT } from "@dockclock/core";
-import { proposeOffer, acceptOffer, revokeMandate, lockedOfferFor } from "../lib/server/negotiation";
+import { proposeOffer, acceptOffer, revokeMandate, lockedOfferFor, spentToday } from "../lib/server/negotiation";
 import { verifyChain } from "../lib/server/chain";
 
 const on = process.env.RUN_SANDBOX === "1";
 const now = Date.now();
 let n = 0;
 
-async function truckAtDock(holdCents = 30_000, citation = "ELD geofence entry") {
+async function truckAtDock(holdCents = 30_000, citation = "ELD geofence entry", synthetic = true) {
   const id = `RT-${now.toString(36)}-${++n}`;
   await prisma.load.create({ data: { id, facilityId: "F-CHI-01", carrierId: "C-blue-mesa-freight", contractVersionId: DEMO_CONTRACT.contractVersionId,
-    appointmentAt: new Date(now - 200 * 60_000), state: "AT_FACILITY", holdCents, authorizationId: `RT-AUTH-${id}`, authorizedAt: new Date(now - 200 * 60_000), lastAuthorizedAt: new Date(now - 200 * 60_000), synthetic: true } });
+    appointmentAt: new Date(now - 200 * 60_000), state: "AT_FACILITY", holdCents, authorizationId: `RT-AUTH-${id}`, authorizedAt: new Date(now - 200 * 60_000), lastAuthorizedAt: new Date(now - 200 * 60_000), synthetic } });
   await prisma.evidenceEvent.create({ data: { loadId: id, source: "ELD_GEOFENCE", kind: "ARRIVAL", utcAt: new Date(now - 190 * 60_000), confidence: 1, citation } });
   return id;
 }
@@ -98,18 +98,25 @@ test("'$900' BOL injection in evidence text cannot change the engine price", { s
   assert.ok(p2.priceCents <= DEMO_CONTRACT.maxDetentionCents);
 });
 
+test("synthetic loads never consume a real mandate's daily budget", { skip: !on }, async () => {
+  const before = await spentToday("M-SHIPPER", now);
+  const id = await truckAtDock();
+  const o = await proposeOffer(id, "WAIT_GUARANTEED", now);
+  assert.equal((await acceptOffer(o.id, { version: o.version, planHash: o.planHash }, "HUMAN", now)).status, "ACCEPTED");
+  assert.equal(await spentToday("M-SHIPPER", now), before);
+});
+
 test("hash chain still verifies after every red-team write", { skip: !on }, async () => {
   const c = await verifyChain();
   assert.equal(c.ok, true, c.reason ?? "");
 });
 
 test("binding daily cap: the accepted offer is not double-counted at execution; the next one is ESCALATED (A7)", { skip: !on }, async () => {
-  const [a, b] = [await truckAtDock(), await truckAtDock()];
+  // Non-synthetic loads: only real loads consume a mandate's budget. Shipper-funded accepts lock for departure, so no PayPal call.
+  const [a, b] = [await truckAtDock(30_000, "ELD geofence entry", false), await truckAtDock(30_000, "ELD geofence entry", false)];
   const o1 = await proposeOffer(a, "WAIT_GUARANTEED", now);
   const o2 = await proposeOffer(b, "WAIT_GUARANTEED", now);
-  const day = new Date(now); day.setUTCHours(0, 0, 0, 0);
-  const rows = await prisma.agentAction.findMany({ where: { mandateId: "M-SHIPPER", verdict: "ALLOWED", action: "ACCEPT", createdAt: { gte: day } }, select: { payload: true } });
-  const spent = rows.reduce((s, r) => s + (Number((r.payload as { cents?: number }).cents) || 0), 0);
+  const spent = await spentToday("M-SHIPPER", now);
   await shipperCaps(spent + o1.priceCents + Math.floor(o2.priceCents / 2)); // room for exactly one
   try {
     const r1 = await acceptOffer(o1.id, { version: o1.version, planHash: o1.planHash }, "HUMAN", now);
@@ -118,5 +125,8 @@ test("binding daily cap: the accepted offer is not double-counted at execution; 
     assert.notEqual(await lockedOfferFor(a, now), null);
     const r2 = await acceptOffer(o2.id, { version: o2.version, planHash: o2.planHash }, "HUMAN", now);
     assert.ok(r2.status === "ESCALATED" && r2.verdict.codes.includes("DAILY_CAP"));
-  } finally { await shipperCaps(100_000_000); }
+  } finally {
+    await shipperCaps(100_000_000);
+    await prisma.load.updateMany({ where: { id: { in: [a, b] } }, data: { synthetic: true } }); // stop counting against the demo budget
+  }
 });

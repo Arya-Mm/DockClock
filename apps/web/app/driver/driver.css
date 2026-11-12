@@ -1,0 +1,74 @@
+/*
+ * Driver app: US road-sign visual language. Read at a glance from the cab, in sun, with gloves.
+ * Sign green panels with an inset white border (like a guide sign), advisory yellow for the one action,
+ * asphalt ground. Everything scoped under .rd so the cockpit's PayPal tokens are untouched.
+ */
+.rd {
+  --rd-green: #00573f;
+  --rd-white: #ffffff;
+  --rd-yellow: #ffd200;
+  --rd-asphalt: #2b2f33;
+  --rd-asphalt-2: #3a3f44;
+  --rd-red: #b3261e;
+  --rd-fog: #c9ced3;
+  min-height: 100dvh;
+  background: var(--rd-asphalt);
+  color: var(--rd-white);
+  font-family: var(--rd-font), system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.45;
+}
+.rd * { box-sizing: border-box; }
+.rd :focus-visible { outline: 4px solid var(--rd-yellow); outline-offset: 3px; }
+
+.rd-wrap { max-width: 30rem; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); display: grid; gap: 16px; }
+
+.rd-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rd-brand { font-weight: 800; letter-spacing: 0.01em; }
+.rd-lang { min-height: 48px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--rd-fog); background: transparent; color: var(--rd-white); font: inherit; }
+
+/* The guide sign: the one memorable element. */
+.rd-sign { background: var(--rd-green); border-radius: 18px; padding: 6px; box-shadow: 0 2px 0 #00000040; }
+.rd-sign-inner { border: 3px solid var(--rd-white); border-radius: 13px; padding: 18px 18px 20px; display: grid; gap: 6px; }
+.rd-place { font-size: 1.05rem; font-weight: 600; }
+.rd-clock { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+.rd-clock-num { font-size: clamp(5rem, 30vw, 8.5rem); font-weight: 800; line-height: 0.9; letter-spacing: -0.02em; }
+.rd-clock-unit { font-size: 1.4rem; font-weight: 600; }
+.rd-sign-line { font-size: 1.05rem; }
+.rd-money { font-variant-numeric: tabular-nums; font-weight: 800; }
+
+.rd-btn { min-height: 64px; width: 100%; border-radius: 14px; border: 0; font: inherit; font-size: 1.25rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 0 18px; touch-action: manipulation; }
+.rd-btn:disabled { opacity: 0.55; cursor: progress; }
+.rd-btn-go { background: var(--rd-yellow); color: var(--rd-asphalt); }
+.rd-btn-ghost { background: transparent; color: var(--rd-white); border: 3px solid var(--rd-fog); }
+.rd-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Offer: a plain card on asphalt so the sign stays the hero. */
+.rd-offer { background: var(--rd-asphalt-2); border-radius: 16px; padding: 18px; display: grid; gap: 12px; border-left: 8px solid var(--rd-yellow); }
+.rd-offer h2 { margin: 0; font-size: 1.3rem; font-weight: 800; }
+.rd-offer-amount { font-size: 2.4rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.rd-muted { color: var(--rd-fog); font-size: 1rem; }
+
+.rd-voice { display: grid; gap: 10px; }
+.rd-input { min-height: 56px; width: 100%; border-radius: 12px; border: 2px solid var(--rd-fog); background: var(--rd-asphalt); color: var(--rd-white); font: inherit; padding: 0 14px; }
+
+/* Confirmation sheet (A9): amount rendered by code, tap to confirm. */
+.rd-sheet-bg { position: fixed; inset: 0; background: #000000b3; display: grid; align-items: end; z-index: 50; }
+.rd-sheet { background: var(--rd-white); color: var(--rd-asphalt); border-radius: 22px 22px 0 0; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); display: grid; gap: 14px; max-width: 30rem; width: 100%; margin: 0 auto; }
+.rd-sheet h2 { margin: 0; font-size: 1.6rem; font-weight: 800; }
+.rd-sheet .rd-btn-ghost { color: var(--rd-asphalt); border-color: var(--rd-asphalt); }
+.rd-sheet .rd-btn-go { background: var(--rd-green); color: var(--rd-white); }
+
+.rd-banner { border-radius: 12px; padding: 12px 14px; font-weight: 600; }
+.rd-banner-warn { background: var(--rd-yellow); color: var(--rd-asphalt); }
+.rd-banner-stop { background: var(--rd-red); color: var(--rd-white); }
+
+.rd-paid { background: var(--rd-white); color: var(--rd-green); border-radius: 18px; padding: 20px; display: grid; gap: 8px; text-align: left; }
+.rd-paid-amount { font-size: clamp(3rem, 16vw, 4.5rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.rd-link { color: var(--rd-yellow); font-weight: 700; min-height: 48px; display: inline-flex; align-items: center; }
+.rd-paid .rd-link { color: var(--rd-green); text-decoration: underline; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .rd-sheet { animation: rd-up 180ms ease-out; }
+  @keyframes rd-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+}

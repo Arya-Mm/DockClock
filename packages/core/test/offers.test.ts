@@ -32,8 +32,10 @@ test("RELEASE_TONU is the contract flat fee; PART_PURCHASE over cap is not offer
   assert.equal(priceOffer("PART_PURCHASE", { ...ctx, partQuote: { priceCents: 7000, deliveryCents: 2000, capCents: 10000 } }, C)!.priceCents, 9000);
 });
 
-test("A6: default offer exists without optional inputs", () => {
-  assert.equal(defaultOffer({ waitedMin: 30, historicalDwellsMin: [] }, C).kind, "WAIT_GUARANTEED");
+test("A6: default offer without optional inputs is the guarantee; nothing is offered when no detention is expected", () => {
+  assert.equal(defaultOffer({ waitedMin: 150, historicalDwellsMin: [] }, C)?.kind, "WAIT_GUARANTEED");
+  assert.equal(defaultOffer({ waitedMin: 30, historicalDwellsMin: [] }, C), null);
+  assert.equal(priceOffer("WAIT_GUARANTEED", { waitedMin: 0, historicalDwellsMin: [] }, C), null);
 });
 
 test("carrier valuation: a payout that costs the next load ranks below a smaller one that keeps it", () => {

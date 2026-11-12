@@ -49,7 +49,8 @@ export function priceOffer(kind: OfferKind, ctx: PricingContext, c: AccessorialC
   const expected = expectedDetentionCents(ctx, c);
   switch (kind) {
     case "WAIT_GUARANTEED":
-      // chargeForDwell already caps at maxDetentionCents.
+      // chargeForDwell already caps at maxDetentionCents. Nothing expected => nothing to guarantee.
+      if (expected <= 0) return null;
       return { kind, priceCents: expected, basis: `expected detention ${usd(expected)} (contract cap ${usd(c.maxDetentionCents)})` };
     case "SLOT_SWAP_WITH_CREDIT": {
       if (!ctx.minutesSaved || !ctx.facilityDoorMinuteCents) return null;
@@ -78,8 +79,9 @@ export function priceOffer(kind: OfferKind, ctx: PricingContext, c: AccessorialC
 }
 
 /** Deterministic default offer (A6): what the Facility Agent sends when the LLM times out or returns junk. */
-export function defaultOffer(ctx: PricingContext, c: AccessorialContract): PricedOffer {
-  return priceOffer("SLOT_SWAP_WITH_CREDIT", ctx, c) ?? priceOffer("WAIT_GUARANTEED", ctx, c)!;
+/** null = no detention is expected, so there is nothing worth offering yet. */
+export function defaultOffer(ctx: PricingContext, c: AccessorialContract): PricedOffer | null {
+  return priceOffer("SLOT_SWAP_WITH_CREDIT", ctx, c) ?? priceOffer("WAIT_GUARANTEED", ctx, c);
 }
 
 /**
