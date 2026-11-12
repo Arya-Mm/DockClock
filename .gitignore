@@ -18,3 +18,7 @@ test-results
 docs/video/raw
 .claude/
 docs/video/tour
+
+.vercel
+.env*
+!.env.example

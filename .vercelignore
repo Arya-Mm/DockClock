@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/.next
+docs/video
+docs/screenshots
+apps/video
+e2e/report
+test-results
+.claude
+.env
+.env.*
+!.env.example
+*.webm
