@@ -305,6 +305,11 @@ export function getDispute(id: string) {
 export function createWebhook(url: string, eventTypes: string[]) {
   return call<{ id: string; url: string }>("POST", "/v1/notifications/webhooks", { url, event_types: eventTypes.map((name) => ({ name })) });
 }
+/** Repoint an existing webhook (JSON Patch). Docs: https://developer.paypal.com/docs/api/webhooks/v1/#webhooks_update */
+export function updateWebhookUrl(webhookId: string, url: string) {
+  return call<{ id: string; url: string }>("PATCH", `/v1/notifications/webhooks/${webhookId}`, [{ op: "replace", path: "/url", value: url }]);
+}
+
 export function listWebhooks() { return call<{ webhooks?: Array<{ id: string; url: string }> }>("GET", "/v1/notifications/webhooks"); }
 /** Doc: developer.paypal.com/api/webhooks/v1/simulate-event-post */
 export function simulateWebhook(webhookId: string, eventType: string) {
