@@ -4,7 +4,7 @@
 #   - the cron is .github/workflows/cron.yml (GitHub Actions schedule, free) calling /api/cron/{tick,reconcile}
 #   - Postgres is Neon free (Render free Postgres expires after 30 days); set DATABASE_URL by hand
 # Free web services sleep after 15 min idle; the 10-minute cron ping keeps it warm while judging.
-# Paid upgrade (not used, see docs/DECISIONS.md #42): uncomment the worker + cron below and set RUN_WORKER_IN_WEB=0.
+# Paid upgrade (not used, see the README section "Deploying for free"): uncomment the worker + cron below and set RUN_WORKER_IN_WEB=0.
 services:
   - type: web
     name: dockclock-web

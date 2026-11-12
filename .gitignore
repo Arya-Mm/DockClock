@@ -22,3 +22,12 @@ docs/video/tour
 .vercel
 .env*
 !.env.example
+/CLAUDE.md
+/SKILLS.md
+/skills-lock.json
+/apps/web/AGENTS.md
+/docs/PLAN.md
+/docs/BUILD_KIT.md
+/docs/PROGRESS.md
+/docs/DECISIONS.md
+/docs/VIDEO_PROMPT.md
