@@ -49,3 +49,10 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 30. **Hash chain.** Each agent_action hash is sha256(canonical JSON of prevHash plus row plus our own createdAt). Appends are serialised by a Postgres advisory lock. `/verify` and `GET /api/agents/verify` recompute the chain from genesis.
 31. **Demo economics are synthetic.** Door-minute value $0.50, priority band $25–$60, swap lead 15 min, and the carrier HOS clock (`DEMO_CARRIER_CLOCK`). They are labelled as synthetic.
 32. **LLM.** Gemini runs with an 8 s timeout. On a timeout, outage, bad JSON or an off-menu action, the deterministic default applies (A6). Prompt templates live in `packages/agents/src/prompts.ts`, and the full prompt is hashed into each row.
+
+## Phase 4 (driver, vision, geofence)
+33. **T13 multi-stop: one Load row per stop** (`stopSeq`; ids like `TRIP-S1`, `TRIP-S2`). Plans, PayPal request ids, evidence, receipts and payouts are all keyed by the stop row, so a 2-dock load produces two independent settlements. A tripId grouping is cockpit-only (Phase 5).
+34. **T12 closed hours.** The contract's `pausedLocalWindows` are converted to UTC per day in the facility zone (DST-safe) and excluded from billable time. They are unioned with carrier delays, so an overlap is excluded once.
+35. **Evidence uploads.** ELD pings and gate-cam images need the ops key (hardware or ops). The driver may upload only a BOL photo, which is weak evidence (confidence ≤0.6), so hardware wins (T6).
+36. **Vision model `gemini-3.1-flash-lite`.** 3.8-flash was rate-limited (429/503) on the free tier. Boxes in pixels are rescaled; an inconsistent box makes the defect confidence 0 (review); there is one schema-retry round.
+37. **Synthetic loads never consume a real mandate's daily budget** (red-team and seed data).

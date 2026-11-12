@@ -79,3 +79,13 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
   - Idempotent accept finishes a failed settlement.
   - SSE closed guard; 8 MB body cap.
 - Open: receipt hash and agent chain head are not anchored outside the DB.
+- Phase 4 completeness pass:
+  - T12 contract closed hours non-billable (union with carrier delays).
+  - T13 per-stop keys test.
+  - T15 future-dated evidence ignored everywhere a timeline is built. Found live: a BOL 12:40 read ahead of server time showed an 852-minute clock; now refused at scan and filtered at read.
+  - Installable PWA: service worker (scope /driver, API never cached), /driver start page, receipt share (Web Share, copy fallback), driver BOL photo upload (BOL only; gate cams stay ops).
+  - Fresh phone run on DRV-1112071704:
+    - Hindi typed "decline" opened a confirm card.
+    - Accepted the $22.50 credit: payout W3U77WVV9BT2S (f134768fd7978).
+    - Geofence exit captured $70.50 ($32.50 detention + $38.00 missing strap); driver $67.25, payout sent; receipt + share shown.
+- Tests: core 52, agents 10, db 2, paypal 3, red-team 10/10.

@@ -41,6 +41,10 @@ const T = {
   findPart: { en: "Find the missing part", es: "Buscar la pieza faltante", hi: "गायब पुर्ज़ा खोजें", pa: "ਗੁੰਮ ਪੁਰਜ਼ਾ ਲੱਭੋ" },
   noPartMissing: { en: "The gate camera shows nothing missing", es: "La cámara de la puerta no muestra nada faltante", hi: "गेट कैमरा में कुछ गायब नहीं दिखा", pa: "ਗੇਟ ਕੈਮਰੇ ਵਿੱਚ ਕੁਝ ਗੁੰਮ ਨਹੀਂ ਦਿਸਿਆ" },
   buyFor: { en: "Buy for {amount}", es: "Comprar por {amount}", hi: "{amount} में खरीदें", pa: "{amount} ਵਿੱਚ ਖ਼ਰੀਦੋ" },
+  share: { en: "Share receipt", es: "Compartir recibo", hi: "रसीद साझा करें", pa: "ਰਸੀਦ ਸਾਂਝੀ ਕਰੋ" },
+  copied: { en: "Receipt link copied", es: "Enlace del recibo copiado", hi: "रसीद लिंक कॉपी हुआ", pa: "ਰਸੀਦ ਲਿੰਕ ਕਾਪੀ ਹੋਇਆ" },
+  bolPhoto: { en: "Photo of the BOL", es: "Foto del BOL", hi: "BOL की फ़ोटो", pa: "BOL ਦੀ ਫ਼ੋਟੋ" },
+  bolSent: { en: "BOL read: in {timeIn}, out {timeOut}", es: "BOL leído: entrada {timeIn}, salida {timeOut}", hi: "BOL पढ़ा: अंदर {timeIn}, बाहर {timeOut}", pa: "BOL ਪੜ੍ਹਿਆ: ਅੰਦਰ {timeIn}, ਬਾਹਰ {timeOut}" },
   offline: { en: "No signal. Your clock keeps running.", es: "Sin señal. Su reloj sigue corriendo.", hi: "सिग्नल नहीं। आपकी घड़ी चल रही है।", pa: "ਸਿਗਨਲ ਨਹੀਂ। ਤੁਹਾਡੀ ਘੜੀ ਚੱਲ ਰਹੀ ਹੈ।" },
 } as const satisfies Record<string, Record<Lang, string>>;
 

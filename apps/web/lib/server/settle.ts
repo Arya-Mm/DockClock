@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma, sha256Json, type Prisma } from "@dockclock/db";
-import { reconcileTimeline, planSettlement, applyAcceptedOffer, nextSteps, authState, type OfferKind, type EvidenceEvent, type Step, type LoadState, type SettlementPlan } from "@dockclock/core";
-import { getLoad, contractOf, moveState } from "./loads";
+import { reconcileTimeline, planSettlement, pausedIntervalsFor, applyAcceptedOffer, nextSteps, authState, type OfferKind, type EvidenceEvent, type Step, type LoadState, type SettlementPlan } from "@dockclock/core";
+import { getLoad, contractOf, moveState, evidenceOf } from "./loads";
 import { runSteps, notify, type StepResult } from "./executor";
 import { DomainError } from "./http";
 import { lockedOfferFor } from "./negotiation";
@@ -17,14 +17,14 @@ export async function settleLoad(loadId: string, nowMs = Date.now()) {
   if (from !== "DEPARTED" && from !== "NEEDS_REVIEW" && from !== "SETTLING") throw new DomainError("state_conflict", `cannot settle from ${from} (T10: no departure, no settlement)`);
   if (!load.authorizationId || !load.holdCents || !load.authorizedAt || !load.lastAuthorizedAt) throw new DomainError("no_hold", "load has no authorization");
 
-  const events: EvidenceEvent[] = load.evidence.map((e) => ({
-    source: e.source as EvidenceEvent["source"], kind: e.kind as EvidenceEvent["kind"], utcMs: e.utcAt.getTime(), confidence: e.confidence, citation: e.citation,
-  }));
+  const events = evidenceOf(load, nowMs);
   const timeline = reconcileTimeline(events);
   const contract = contractOf(load.contractVersion.terms);
   const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE"),
     // Damage from the gate-cam diff, priced by the tariff in core (never by the vision model).
-    lineItems: isOn("VISION") ? (await damageFor(loadId)).items : [] }, contract);
+    lineItems: isOn("VISION") ? (await damageFor(loadId)).items : [],
+    // T12: contract closed hours in the facility's zone, non-billable.
+    facilityPausedIntervals: timeline.arrivalMs !== null && timeline.departureMs !== null ? pausedIntervalsFor(contract, load.facility.ianaZone, Math.min(timeline.arrivalMs, load.appointmentAt.getTime()), timeline.departureMs) : [] }, contract);
   // An accepted shipper-funded agent offer (re-guarded at departure, A8) replaces metered detention: guaranteed price.
   // Evidence review still wins: weak evidence holds money even with an accepted offer.
   const locked = metered.action === "HOLD_FOR_REVIEW" ? null : await lockedOfferFor(loadId, nowMs);

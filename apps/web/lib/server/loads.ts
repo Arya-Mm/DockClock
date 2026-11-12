@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma, type Load } from "@dockclock/db";
-import { transition, seedNetwork, recommendHold, DEMO_CONTRACT, type AccessorialContract, type LoadState, type HoldRecommendation } from "@dockclock/core";
+import { transition, seedNetwork, recommendHold, DEMO_CONTRACT, type AccessorialContract, type LoadState, type HoldRecommendation, type EvidenceEvent } from "@dockclock/core";
 import { DomainError } from "./http";
 
 // Historical dwell for hold sizing: the deterministic synthetic network (labelled synthetic in UI).
@@ -27,6 +27,15 @@ export async function getLoad(id: string) {
   const l = await prisma.load.findUnique({ where: { id }, include: { facility: true, carrier: true, contractVersion: true, evidence: true } });
   if (!l) throw new DomainError("not_found", `load ${id} not found`);
   return l;
+}
+
+/**
+ * Evidence rows -> core events. T15: the server clock decides, so anything stamped after `nowMs` (plus 5 min skew)
+ * is ignored everywhere a timeline is built (a paper time from the future can never start or stop a clock).
+ */
+export function evidenceOf(load: { evidence: { source: string; kind: string; utcAt: Date; confidence: number; citation: string }[] }, nowMs = Date.now()): EvidenceEvent[] {
+  return load.evidence.filter((e) => e.utcAt.getTime() <= nowMs + 5 * 60_000)
+    .map((e) => ({ source: e.source as EvidenceEvent["source"], kind: e.kind as EvidenceEvent["kind"], utcMs: e.utcAt.getTime(), confidence: e.confidence, citation: e.citation }));
 }
 
 type LoadUpdate = Parameters<typeof prisma.load.updateMany>[0]["data"];

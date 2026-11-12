@@ -124,6 +124,8 @@ Your previous answer was invalid (${r.error.issues[0]?.path.join(".")}: ${r.erro
       if (!r.date || !hhmm) { issues.push(`BOL has no ${kind.toLowerCase()} time`); continue; }
       const t = localWallClockToUtc(`${r.date}T${hhmm}`, load.facility.ianaZone);
       if (!t.ok) { issues.push(`BOL ${kind.toLowerCase()} ${r.date} ${hhmm}: ${t.reason} (T3), not used`); status = "REVIEW"; continue; }
+      // T15: the server clock decides. A paper time in the future (or before the load existed) is not evidence.
+      if (t.utcMs > Date.now() + 5 * 60_000 || t.utcMs < load.createdAt.getTime() - 2 * 86_400_000) { issues.push(`BOL ${kind.toLowerCase()} ${r.date} ${hhmm} is outside this load's time window, not used`); status = "REVIEW"; continue; }
       evidence.push({ kind, utc: new Date(t.utcMs).toISOString() });
     }
   }

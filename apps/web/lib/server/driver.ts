@@ -2,8 +2,8 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { prisma, sha256Json } from "@dockclock/db";
-import { chargeForDwell, deriveGeofenceEvents, reconcileTimeline, type EvidenceEvent, type OfferKind, OFFER_FUNDER } from "@dockclock/core";
-import { getLoad, contractOf, moveState } from "./loads";
+import { chargeForDwell, deriveGeofenceEvents, reconcileTimeline, type OfferKind, OFFER_FUNDER } from "@dockclock/core";
+import { getLoad, contractOf, moveState, evidenceOf } from "./loads";
 import { acceptOffer } from "./negotiation";
 import { settleLoad } from "./settle";
 import { appendAction } from "./chain";
@@ -53,9 +53,11 @@ export interface DriverSnapshot {
 export async function snapshot(loadId: string, nowMs = Date.now()): Promise<DriverSnapshot> {
   const load = await getLoad(loadId);
   const c = contractOf(load.contractVersion.terms);
-  const events: EvidenceEvent[] = load.evidence.map((e) => ({ source: e.source as EvidenceEvent["source"], kind: e.kind as EvidenceEvent["kind"], utcMs: e.utcAt.getTime(), confidence: e.confidence, citation: e.citation }));
+  const events = evidenceOf(load, nowMs);
   const tl = events.length ? reconcileTimeline(events) : null;
-  const arrivalMs = tl?.arrivalMs ?? null, departureMs = tl?.departureMs ?? null;
+  // A departure only counts once the state machine has moved past the dock (geofence exit / gate), never from paper alone.
+  const left = !["AUTHORIZED", "AT_FACILITY", "DISPATCHED", "AWAITING_PAYER"].includes(load.state);
+  const arrivalMs = tl?.arrivalMs ?? null, departureMs = left ? tl?.departureMs ?? null : null;
   // The clock starts at the later of appointment and arrival (T1); the server clock decides (T15).
   const clockStart = arrivalMs === null ? null : Math.max(arrivalMs, load.appointmentAt.getTime());
   const end = departureMs ?? nowMs;

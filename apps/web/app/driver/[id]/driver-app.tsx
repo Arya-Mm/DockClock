@@ -28,7 +28,10 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
   const q = `k=${encodeURIComponent(driverKey)}`;
   const base = `/api/driver/${encodeURIComponent(s.loadId)}`;
 
-  useEffect(() => { setLang(readLang()); }, []);
+  useEffect(() => {
+    setLang(readLang());
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/driver-sw.js", { scope: "/driver" }).catch(() => { /* app still works online */ });
+  }, []);
   useEffect(() => {
     const es = new EventSource(`${base}/stream?${q}`);
     es.onmessage = (e) => { setOffline(false); setS(JSON.parse(e.data) as DriverSnapshot); };
@@ -62,6 +65,27 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
     const d = (await post("/parts", { productId })) as { result?: { settlement?: { approveUrl?: string | null } } } | undefined;
     const url = d?.result?.settlement?.approveUrl;
     if (url) window.location.assign(url); // carrier approves the carrier-paid order in PayPal
+  }
+
+  async function shareReceipt(slug: string) {
+    const url = `${location.origin}/r/${slug}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "DockClock proof of wait", url });
+      else { await navigator.clipboard.writeText(url); setNotice({ tone: "warn", text: L("copied") }); }
+    } catch { /* user closed the share sheet */ }
+  }
+  async function sendBol(file: File) {
+    if (file.size > 6_000_000) { setNotice({ tone: "stop", text: "Photo over 6 MB" }); return; }
+    const base64 = await new Promise<string>((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] ?? ""); r.onerror = bad; r.readAsDataURL(file); });
+    const mime = (["image/png", "image/jpeg", "image/webp"].includes(file.type) ? file.type : "image/jpeg") as "image/png" | "image/jpeg" | "image/webp";
+    setBusy(true); setNotice(null);
+    try {
+      const r = await fetch(`/api/loads/${encodeURIComponent(s.loadId)}/vision?${q}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "BOL", image: { mime, base64 } }) });
+      const j = (await r.json()) as { data?: { status: string; parsed?: { timeIn?: string | null; timeOut?: string | null } | null; issues?: string[] }; error?: { message?: string } };
+      if (!r.ok || !j.data) setNotice({ tone: "stop", text: j.error?.message ?? `Request failed (${r.status})` });
+      else if (j.data.status === "OK") setNotice({ tone: "warn", text: L("bolSent", { timeIn: j.data.parsed?.timeIn ?? "--", timeOut: j.data.parsed?.timeOut ?? "--" }) });
+      else setNotice({ tone: "warn", text: L("review") });
+    } catch { setNotice({ tone: "warn", text: L("offline") }); } finally { setBusy(false); }
   }
 
   const checkIn = () => post("/checkin", { deviceAt: new Date().toISOString() });
@@ -146,6 +170,14 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
         </section>
       )}
 
+      {atDock && (
+        <label className="rd-btn rd-btn-ghost" style={{ position: "relative" }}>
+          {L("bolPhoto")}
+          <input type="file" accept="image/*" capture="environment" style={{ position: "absolute", inset: 0, opacity: 0 }} disabled={busy}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void sendBol(f); e.target.value = ""; }} />
+        </label>
+      )}
+
       {atDock && <section className="rd-voice" aria-label={L("findPart")}>
         <button className="rd-btn rd-btn-ghost" onClick={findParts} disabled={busy}>{L("findPart")}</button>
         {parts && parts.missing === 0 && <span className="rd-muted">{L("noPartMissing")}</span>}
@@ -169,6 +201,7 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
             </>
           ) : <span>{L("noDetention")}</span>}
           {s.receiptSlug && <a className="rd-link" href={`/r/${s.receiptSlug}`}>{L("receipt")}</a>}
+          {s.receiptSlug && <button className="rd-btn rd-btn-ghost" style={{ color: "var(--rd-green)", borderColor: "var(--rd-green)" }} onClick={() => shareReceipt(s.receiptSlug!)}>{L("share")}</button>}
         </section>
       )}
 

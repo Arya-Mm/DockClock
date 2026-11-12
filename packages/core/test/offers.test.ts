@@ -61,3 +61,29 @@ test("accepted WAIT_GUARANTEED replaces metered detention, within the hold ceili
   assert.equal(p.platformRetainedCents, 900);
   assert.equal(applyAcceptedOffer(base, { id: "O2", kind: "SLOT_SWAP_WITH_CREDIT", priceCents: 1 }, 10_000, C), base);
 });
+
+import { pausedIntervalsFor } from "../src/settlement";
+test("T12: a contract lunch lockout inside the wait is not billed, and an overlapping carrier delay is excluded once", () => {
+  const zone = "America/Chicago";
+  const c = { ...C, pausedLocalWindows: [{ start: "12:00", end: "12:30", reason: "lunch lockout" }] };
+  // Appointment 10:00 CST = 16:00Z; departure 15:00 CST = 21:00Z (300 min dwell).
+  const arr = Date.parse("2026-11-12T16:00:00Z"), dep = Date.parse("2026-11-12T21:00:00Z");
+  const paused = pausedIntervalsFor(c, zone, arr, dep);
+  assert.equal(paused.length, 1);
+  assert.equal(paused[0]!.startMs, Date.parse("2026-11-12T18:00:00Z"));
+  const tl = reconcileTimeline([{ source: "ELD_GEOFENCE", kind: "ARRIVAL", utcMs: arr, confidence: 1, citation: "a" }, { source: "ELD_GEOFENCE", kind: "DEPARTURE", utcMs: dep, confidence: 1, citation: "d" }]);
+  const base = planSettlement({ loadId: "T12", appointmentMs: arr, timeline: tl, authorizedCents: 30_000 }, c);
+  const withPause = planSettlement({ loadId: "T12", appointmentMs: arr, timeline: tl, authorizedCents: 30_000, facilityPausedIntervals: paused }, c);
+  assert.equal(withPause.excludedPausedMin, 30);
+  assert.equal(base.billableMin - withPause.billableMin, 30);
+  const both = planSettlement({ loadId: "T12", appointmentMs: arr, timeline: tl, authorizedCents: 30_000, facilityPausedIntervals: paused,
+    delays: [{ startMs: Date.parse("2026-11-12T18:15:00Z"), endMs: Date.parse("2026-11-12T18:45:00Z"), attributedTo: "CARRIER", reason: "paperwork" }] }, c);
+  assert.equal(base.billableMin - both.billableMin, 45, "30 paused + 30 carrier overlapping 15 = 45 excluded");
+});
+
+import { paypalRequestId } from "../src/ledger";
+test("T13: two stops of one trip settle independently (distinct PayPal keys per stop row)", () => {
+  const s1 = paypalRequestId("TRIP9-S1", "CAPTURE", "settle-AUTH1"), s2 = paypalRequestId("TRIP9-S2", "CAPTURE", "settle-AUTH1");
+  assert.notEqual(s1, s2);
+  assert.equal(paypalRequestId("TRIP9-S1", "CAPTURE", "settle-AUTH1"), s1, "same stop, same key: replay-safe");
+});

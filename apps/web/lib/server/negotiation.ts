@@ -9,7 +9,7 @@ import { checkMandate, decide, geminiLlm, PROMPTS, Mandate as MandateSchema, typ
 import { payoutCarrier, createPurchaseOrder, captureOrder, approveLinkOf, type PayoutBatch, type Order } from "@dockclock/paypal";
 import { isOn } from "../flags";
 import { appendAction } from "./chain";
-import { getLoad, contractOf, facilityDwells } from "./loads";
+import { getLoad, contractOf, facilityDwells, evidenceOf } from "./loads";
 import { recorded } from "./ops";
 import { notify } from "./executor";
 import { DomainError } from "./http";
@@ -36,7 +36,7 @@ type LoadFull = Awaited<ReturnType<typeof getLoad>>;
 function pricingContext(load: LoadFull, contract: AccessorialContract, nowMs: number): PricingContext {
   // Same clock as settlement and the driver app: reconciled arrival (not the latest arrival row), started no earlier
   // than the appointment (T1).
-  const events: EvidenceEvent[] = load.evidence.map((e) => ({ source: e.source as EvidenceEvent["source"], kind: e.kind as EvidenceEvent["kind"], utcMs: e.utcAt.getTime(), confidence: e.confidence, citation: e.citation }));
+  const events = evidenceOf(load, nowMs);
   const arrival = (events.length ? reconcileTimeline(events).arrivalMs : null) ?? nowMs;
   const waitedMin = Math.max(0, Math.floor((nowMs - Math.max(arrival, load.appointmentAt.getTime())) / 60_000));
   const historicalDwellsMin = facilityDwells(load.facilityId);

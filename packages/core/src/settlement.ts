@@ -1,3 +1,4 @@
+import { localWallClockToUtc } from "./time";
 import { MIN } from "./time";
 import type { ResolvedTimeline } from "./evidence";
 
@@ -14,6 +15,8 @@ export interface AccessorialContract {
   lateArrivalPolicy: "WAIVE_DETENTION" | "CLOCK_FROM_ARRIVAL";
   tonuFlatCents: number;
   driverShareBps: number;         // 9000 = 90% of collected detention to driver
+  /** T12: daily closed windows in facility local time, e.g. lunch lockout {start:"12:00",end:"12:30"}. Non-billable. */
+  pausedLocalWindows?: { start: string; end: string; reason: string }[];
 }
 
 export interface DelayInterval {
@@ -38,6 +41,8 @@ export interface SettlementInput {
   overcaptureEnabled?: boolean;
   /** Non-detention charges from damage diff, cold chain, hardware, etc. */
   lineItems?: LineItem[];
+  /** T12: facility closed hours from the contract, already converted to UTC (pausedIntervalsFor). Non-billable. */
+  facilityPausedIntervals?: { startMs: number; endMs: number; reason: string }[];
 }
 
 /**
@@ -68,6 +73,8 @@ export interface SettlementPlan {
   arrivalClass: "EARLY" | "ON_TIME" | "LATE" | "UNKNOWN";
   dwellMin: number;
   excludedCarrierMin: number;
+  /** T12: minutes inside contract closed hours (optional for plans saved before T12). */
+  excludedPausedMin?: number;
   billableMin: number;
   increments: number;
   chargeCents: number;
@@ -96,8 +103,11 @@ function overlapMs(a0: number, a1: number, b0: number, b1: number): number {
 
 /** Merge overlapping intervals so double-logged carrier delays aren't subtracted twice. */
 function mergedCarrierIntervals(delays: DelayInterval[]): Array<[number, number]> {
-  const xs = delays.filter((d) => d.attributedTo === "CARRIER" && d.endMs > d.startMs)
-    .map((d) => [d.startMs, d.endMs] as [number, number]).sort((a, b) => a[0] - b[0]);
+  return merge(delays.filter((d) => d.attributedTo === "CARRIER").map((d) => [d.startMs, d.endMs] as [number, number]));
+}
+
+function merge(intervals: Array<[number, number]>): Array<[number, number]> {
+  const xs = intervals.filter(([a, b]) => b > a).map(([a, b]) => [a, b] as [number, number]).sort((a, b) => a[0] - b[0]);
   const out: Array<[number, number]> = [];
   for (const x of xs) {
     const last = out[out.length - 1];
@@ -133,7 +143,7 @@ export function planSettlement(input: SettlementInput, c: AccessorialContract): 
   // --- TONU short-circuit: flat fee replaces detention, never both.
   let detentionCents = 0;
   let arrivalClass: SettlementPlan["arrivalClass"] = "ON_TIME";
-  let dwellMin = 0, excludedCarrierMin = 0, billableMin = 0, increments = 0;
+  let dwellMin = 0, excludedCarrierMin = 0, excludedPausedMin = 0, billableMin = 0, increments = 0;
 
   if (input.aborted) {
     detentionCents = c.tonuFlatCents;
@@ -157,12 +167,17 @@ export function planSettlement(input: SettlementInput, c: AccessorialContract): 
     const clockEnd = Math.max(clockStart, departureMs);
     dwellMin = Math.floor((clockEnd - clockStart) / MIN);
 
-    const carrierMs = mergedCarrierIntervals(input.delays ?? [])
-      .reduce((s, [a, b]) => s + overlapMs(clockStart, clockEnd, a, b), 0);
-    excludedCarrierMin = Math.floor(carrierMs / MIN);
+    const inClock = (xs: Array<[number, number]>) => xs.reduce((s, [a, b]) => s + overlapMs(clockStart, clockEnd, a, b), 0);
+    const carrier = mergedCarrierIntervals(input.delays ?? []);
+    const paused = merge((input.facilityPausedIntervals ?? []).map((p) => [p.startMs, p.endMs] as [number, number]));
+    excludedCarrierMin = Math.floor(inClock(carrier) / MIN);
+    excludedPausedMin = Math.floor(inClock(paused) / MIN);
+    // T12: contract-defined closed hours are non-billable. Union with carrier delays so an overlap is excluded once.
+    const excludedMin = Math.floor(inClock(merge([...carrier, ...paused])) / MIN);
     if (excludedCarrierMin > 0) audit.push(`Excluded ${excludedCarrierMin}m carrier-caused delay`);
+    if (excludedPausedMin > 0) audit.push(`Excluded ${excludedPausedMin}m facility closed hours per contract (${(input.facilityPausedIntervals ?? []).map((p) => p.reason).filter((v, i, a) => a.indexOf(v) === i).join(", ")})`);
 
-    const netMin = Math.max(0, dwellMin - excludedCarrierMin);
+    const netMin = Math.max(0, dwellMin - excludedMin);
     billableMin = waived ? 0 : Math.max(0, netMin - c.freeTimeMin);
     increments = c.rounding === "UP" ? Math.ceil(billableMin / c.incrementMin) : Math.floor(billableMin / c.incrementMin);
     const raw = increments * c.ratePerIncrementCents;
@@ -183,7 +198,7 @@ export function planSettlement(input: SettlementInput, c: AccessorialContract): 
   if (chargeCents === 0) {
     audit.push(`Shipper owes nothing — VOID hold of ${usd(input.authorizedCents)}`);
     if (carrierItemsCents > 0) audit.push(`Carrier owes ${usd(carrierItemsCents)} with no earnings to net against → invoice carrier`);
-    return { ...base, action: "VOID", arrivalClass, dwellMin, excludedCarrierMin, billableMin, increments,
+    return { ...base, action: "VOID", arrivalClass, dwellMin, excludedCarrierMin, excludedPausedMin, billableMin, increments,
       releasedCents: input.authorizedCents, carrierInvoiceCents: carrierItemsCents, audit };
   }
 
@@ -208,7 +223,28 @@ export function planSettlement(input: SettlementInput, c: AccessorialContract): 
 
   return {
     ...base, action: invoiceCents > 0 ? "CAPTURE_AND_INVOICE" : "CAPTURE",
-    arrivalClass, dwellMin, excludedCarrierMin, billableMin, increments,
+    arrivalClass, dwellMin, excludedCarrierMin, excludedPausedMin, billableMin, increments,
     chargeCents, captureCents, releasedCents, invoiceCents, driverPayoutCents, platformRetainedCents, carrierInvoiceCents, audit,
   };
+}
+
+/**
+ * T12: contract closed windows (local wall clock, IANA zone) -> UTC intervals covering [fromMs, toMs].
+ * Each day is converted separately, so DST days get the right offset. Windows that cross midnight are not supported.
+ */
+export function pausedIntervalsFor(c: AccessorialContract, zone: string, fromMs: number, toMs: number): { startMs: number; endMs: number; reason: string }[] {
+  const out: { startMs: number; endMs: number; reason: string }[] = [];
+  if (!c.pausedLocalWindows?.length || toMs <= fromMs) return out;
+  const day = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(ms);
+  const seen = new Set<string>();
+  for (let t = fromMs - 86_400_000; t <= toMs + 86_400_000; t += 3_600_000) {
+    const d = day(t);
+    if (seen.has(d)) continue;
+    seen.add(d);
+    for (const w of c.pausedLocalWindows) {
+      const a = localWallClockToUtc(`${d}T${w.start}`, zone), b = localWallClockToUtc(`${d}T${w.end}`, zone);
+      if (a.ok && b.ok && b.utcMs > a.utcMs && b.utcMs > fromMs && a.utcMs < toMs) out.push({ startMs: a.utcMs, endMs: b.utcMs, reason: w.reason });
+    }
+  }
+  return out.sort((x, y) => x.startMs - y.startMs);
 }
