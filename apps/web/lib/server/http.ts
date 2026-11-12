@@ -27,6 +27,8 @@ export async function parseBody<S extends z.ZodType>(req: Request, schema: S): P
 export function handle<A extends unknown[]>(fn: (...a: A) => Promise<Response>) {
   return async (...a: A): Promise<Response> => {
     if (process.env.PAYPAL_ENV === "live") return fail(503, "sandbox_only", "DockClock runs against the PayPal sandbox only (F4)");
+    const req = a[0] instanceof Request ? a[0] : null;
+    if (req && req.method !== "GET" && !allowWrite(req)) return fail(429, "rate_limited", `Too many requests: limit ${RATE_PER_MIN}/min per IP`, { retryAfterSec: 60 });
     try { return await fn(...a); }
     catch (e) {
       if (e instanceof PayPalError) return fail(502, "paypal_error", e.message, { debugId: e.debugId, issue: e.issue });
@@ -35,6 +37,22 @@ export function handle<A extends unknown[]>(fn: (...a: A) => Promise<Response>) 
       return fail(500, "internal_error", "Internal error");
     }
   };
+}
+
+// Per-IP write limit for the public judge deploy (RATE_LIMIT_PER_IP_PER_MIN). Ops-key callers are exempt.
+// shortcut: in-memory fixed window per instance; fine on one free instance, move to a shared store when scaling out.
+const RATE_PER_MIN = Number(process.env.RATE_LIMIT_PER_IP_PER_MIN ?? 30);
+const hits = new Map<string, { windowStart: number; n: number }>();
+export function allowWrite(req: Request, nowMs = Date.now()): boolean {
+  if (!(RATE_PER_MIN > 0) || opsAuthorized(req.headers.get("x-ops-key"), null)) return true;
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
+  const h = hits.get(ip);
+  if (!h || nowMs - h.windowStart >= 60_000) {
+    if (hits.size > 10_000) hits.clear(); // bound memory under a spray of spoofed IPs
+    hits.set(ip, { windowStart: nowMs, n: 1 });
+    return true;
+  }
+  return ++h.n <= RATE_PER_MIN;
 }
 
 export class DomainError extends Error { constructor(public code: string, msg: string) { super(msg); } }

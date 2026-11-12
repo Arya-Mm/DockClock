@@ -15,7 +15,8 @@
     "demo:negotiate": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-negotiation.ts",
     "test:redteam": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx --test test/redteam.test.ts",
     "demo:driver": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-driver.ts",
-    "demo:review": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-review.ts"
+    "demo:review": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-review.ts",
+    "test": "node --conditions=react-server --import tsx --test test/ratelimit.test.ts"
   },
   "dependencies": {
     "@bryntum/core-community": "8.0.0",
