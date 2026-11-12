@@ -6,6 +6,7 @@ import { runSteps, notify, type StepResult } from "./executor";
 import { DomainError } from "./http";
 import { lockedOfferFor } from "./negotiation";
 import { isOn } from "../flags";
+import { damageFor } from "./vision";
 
 export type { StepResult };
 
@@ -21,7 +22,9 @@ export async function settleLoad(loadId: string, nowMs = Date.now()) {
   }));
   const timeline = reconcileTimeline(events);
   const contract = contractOf(load.contractVersion.terms);
-  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE") }, contract);
+  const metered = planSettlement({ loadId, appointmentMs: load.appointmentAt.getTime(), timeline, authorizedCents: load.holdCents, overcaptureEnabled: isOn("OVERCAPTURE"),
+    // Damage from the gate-cam diff, priced by the tariff in core (never by the vision model).
+    lineItems: isOn("VISION") ? (await damageFor(loadId)).items : [] }, contract);
   // An accepted shipper-funded agent offer (re-guarded at departure, A8) replaces metered detention: guaranteed price.
   // Evidence review still wins: weak evidence holds money even with an accepted offer.
   const locked = metered.action === "HOLD_FOR_REVIEW" ? null : await lockedOfferFor(loadId, nowMs);

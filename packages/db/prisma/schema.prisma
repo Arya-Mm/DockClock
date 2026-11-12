@@ -128,6 +128,7 @@ model Load {
   paypalOps         PayPalOp[]
   offers            Offer[]
   receipts          Receipt[]
+  visionScans       VisionScan[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -284,4 +285,23 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([loadId])
+}
+
+/// One vision read of a gate-cam or BOL photo (Phase 4). raw = model text, parsed = zod-validated output.
+/// Amounts are never read from images: damage is priced from the tariff in code.
+model VisionScan {
+  id         String   @id @default(cuid())
+  loadId     String
+  load       Load     @relation(fields: [loadId], references: [id])
+  kind       String // GATE_IN | GATE_OUT | BOL
+  imageRef   String
+  model      String
+  status     String // OK | REVIEW | FAILED
+  confidence Float?
+  raw        String?
+  parsed     Json?
+  issues     String[]
+  createdAt  DateTime @default(now())
+
+  @@index([loadId, kind])
 }

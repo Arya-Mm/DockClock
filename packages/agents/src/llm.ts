@@ -66,6 +66,27 @@ export async function decide<A extends string>(i: DecideInput<A>): Promise<Decis
   }
 }
 
+/**
+ * Gemini vision: one image + instructions -> JSON text (https://ai.google.dev/gemini-api/docs/image-understanding,
+ * inline_data). The caller validates the JSON with zod; nothing here is trusted.
+ */
+export async function geminiVision(apiKey: string, model: string, prompt: string, image: { mime: string; base64: string }, signal: AbortSignal): Promise<string> {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ inline_data: { mime_type: image.mime, data: image.base64 } }, { text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0, maxOutputTokens: 800 },
+    }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`gemini ${res.status}`);
+  const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("gemini returned no text");
+  return text;
+}
+
 /** Gemini generateContent (https://ai.google.dev/api/generate-content). Key goes in a header, never the URL. */
 export function geminiLlm(apiKey: string, model: string): Llm {
   return async (prompt, signal) => {
