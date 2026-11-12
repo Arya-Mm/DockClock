@@ -11,6 +11,8 @@ The rule throughout: **the AI reads, code decides, PayPal executes.** No model o
 - DOT OIG 2018: **$1.1–1.3B/yr** in lost driver income. Each 15 minutes of added dwell is *associated with* a **+6.2%** expected crash rate (a fleet-level association, not a causal claim).
 
 ## Try it
+Hosted (PayPal sandbox): **https://dockclock-web.onrender.com/judge**. The free instance sleeps when idle, so the first request can take about a minute.
+
 | Surface | Path | What it shows |
 |---|---|---|
 | Judge mode | `/judge` | Eight scenarios, each with its engine plan and the real sandbox calls (with `debug_id`), plus the red-team log and webhook arrivals |
@@ -23,6 +25,30 @@ The rule throughout: **the AI reads, code decides, PayPal executes.** No model o
 | Health | `/health` | Queue depth, worker heartbeat, last cron reconcile, last webhook |
 
 Ops pages ask for the ops key once (`/ops`). PayPal sandbox only: the app refuses to run against live.
+
+## Architecture
+```mermaid
+flowchart LR
+  subgraph Evidence
+    ELD[ELD geofence pings] --- Gate[Gate system] --- App[Driver check-in] --- BOL[BOL photo]
+  end
+  Evidence --> Recon[reconcileTimeline]
+  subgraph Agents["LLM agents (read only)"]
+    Neg[Negotiation: typed offer menu]
+    Vis[Vision: typed detections]
+  end
+  Neg --> Guard{Mandate guard}
+  Vis --> Recon
+  Recon --> Engine[Settlement engine<br/>integer cents]
+  Guard -->|ALLOWED| Exec[Executor<br/>PayPal-Request-Id per stage]
+  Guard -->|BLOCKED / ESCALATED| Ledger[(Hash-chained<br/>agent ledger)]
+  Engine --> Exec
+  Exec -->|REST writes| PayPal[(PayPal sandbox)]
+  PayPal -->|webhooks, deduped| SM[Load state machine]
+  PayPal -.->|SDK reads, Transaction Search| Recon2[Reconcile + pollers]
+  SM --> UI[Dock board · Cockpit · Studio · Driver app · Judge]
+```
+The worker (pollers, reauth watchdog, offer expiry, evidence retry) runs inside the web service; a GitHub Actions schedule triggers ticks and the nightly reconcile.
 
 ## PayPal capabilities (all real sandbox calls)
 | Capability | Used for |
