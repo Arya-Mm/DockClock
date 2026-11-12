@@ -1,13 +1,21 @@
 import Link from "next/link";
+import { Oswald, Barlow_Condensed } from "next/font/google";
 import { DEMO_CONTRACT } from "@dockclock/core";
-import { overpass } from "./driver/font";
 import { WaitSign } from "./wait-sign";
 import "./landing.css";
+
+// Type from the MotionSites "logistics-freight" design: condensed grotesques, the voice of freight stencils.
+const display = Oswald({ subsets: ["latin"], weight: ["700"], variable: "--lf-display" });
+const ui = Barlow_Condensed({ subsets: ["latin"], weight: ["400", "600", "700"], variable: "--lf-ui" });
 
 export const metadata = { title: { absolute: "DockClock: drivers paid for the wait, before the gate" },
   description: "A PayPal authorization hold becomes a spending mandate for AI agents. The AI reads, code decides, PayPal executes." };
 
 const REPO = "https://github.com/Arya-Mm/DockClock";
+// Hotlinked, not committed (CLAUDE.md: no third-party media in the repo).
+// Hero: MotionSites logistics-freight clip. Gate band: Pixabay "Road, Cargo, Trailer" (Pixabay Content License).
+const HERO_VIDEO = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20261005_115944_095d91d4-030f-4e82-b42b-a388c0816d24.mp4";
+const TRUCK_VIDEO = "https://cdn.pixabay.com/video/2022/12/18/143479-782374009_large.mp4";
 
 // The real order of events for one load; numbered because it is a sequence.
 const STEPS = [
@@ -27,22 +35,38 @@ const SURFACES = [
 
 export default function Home() {
   return (
-    <main className={`lp ${overpass.variable}`}>
-      <header className="lp-bar">
-        <span className="lp-mark">DockClock</span>
-        <nav aria-label="Main"><Link href="/judge">Judge mode</Link><a href={REPO}>Source</a></nav>
-      </header>
-
-      <section className="lp-hero">
-        <div className="lp-hero-text">
-          <h1>Drivers get paid for the wait before they leave the gate.</h1>
-          <p className="lp-lede">A PayPal authorization hold becomes a spending mandate for AI agents. The AI reads the evidence, code decides every dollar, PayPal moves the money.</p>
-          <div className="lp-cta">
+    <main className={`lp ${display.variable} ${ui.variable}`}>
+      <section className="lf-hero" aria-labelledby="hero-title">
+        <video className="lf-bg" src={HERO_VIDEO} autoPlay muted loop playsInline disablePictureInPicture
+          aria-label="Aerial view of a container freight train crossing black coal terrain" />
+        <div className="lf-tint" />
+        <header className="lp-bar">
+          <span className="lp-mark">DockClock</span>
+          <nav aria-label="Main"><Link href="/judge">Judge mode</Link><a href={REPO}>Source</a></nav>
+        </header>
+        <div className="lf-stage">
+          <h1 id="hero-title" className="lf-headline">
+            <span>Paid for</span><span>the wait</span><span>before the</span><span>gate.</span>
+          </h1>
+          <svg className="lf-mark" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+            <circle cx="26" cy="26" r="23" stroke="#D6523A" strokeWidth="1.6" strokeDasharray="98.3 46.3" transform="rotate(2.5 26 26)" />
+            <g stroke="#D6523A" strokeWidth="1.6" strokeLinecap="round">
+              <circle cx="26.5" cy="26.1" r="2.3" /><path d="M26.5 23.8V12.5M28.5 27.2L35 31" />
+            </g>
+          </svg>
+          <section className="lf-feature lf-left">
+            <h2>One hold,<br />set at dispatch</h2>
+            <p>The shipper approves a PayPal authorization once. It caps what any AI agent can spend on this load.</p>
+          </section>
+          <section className="lf-feature lf-right">
+            <h2>Code decides<br />every dollar</h2>
+            <p>The AI reads the evidence. The engine prices in integer cents. PayPal moves the money.</p>
+          </section>
+          <div className="lf-cta">
             <Link className="lp-btn" href="/judge">Open judge mode</Link>
             <Link className="lp-btn lp-btn-ghost" href="/dock">See the dock board</Link>
           </div>
         </div>
-        <WaitSign contract={DEMO_CONTRACT} />
       </section>
 
       <section className="lp-facts" aria-labelledby="why">
@@ -57,6 +81,19 @@ export default function Home() {
       <section className="lp-steps" aria-labelledby="how">
         <h2 id="how">One load, start to finish</h2>
         <ol>{STEPS.map((s) => <li key={s.t}><h3>{s.t}</h3><p>{s.d}</p></li>)}</ol>
+      </section>
+
+      <section className="lf-gate" aria-labelledby="clock">
+        <video className="lf-bg" src={TRUCK_VIDEO} autoPlay muted loop playsInline disablePictureInPicture
+          aria-label="A cargo truck with a trailer driving down a road" />
+        <div className="lf-gate-shade" />
+        <div className="lf-gate-inner">
+          <div>
+            <h2 id="clock">The clock runs at the dock. The money waits on PayPal.</h2>
+            <p>Free time ends, detention starts, and the hold already covers it. When the truck rolls out, the driver is paid.</p>
+          </div>
+          <WaitSign contract={DEMO_CONTRACT} />
+        </div>
       </section>
 
       <section className="lp-rule" aria-labelledby="rule">
@@ -76,7 +113,7 @@ export default function Home() {
 
       <footer className="lp-foot">
         <p>Built with PayPal Orders, Payments, Payouts, Invoicing, Disputes, Webhooks and Transaction Search, the PayPal Server SDK, AG Grid, AG Studio, Bryntum Scheduler, Channel3, Render and Gemini.</p>
-        <p><a href={REPO}>Source on GitHub</a> · MIT licence</p>
+        <p><a href={REPO}>Source on GitHub</a> · MIT licence. Hero footage via MotionSites; truck footage via Pixabay.</p>
       </footer>
     </main>
   );
