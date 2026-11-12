@@ -266,7 +266,11 @@ export async function acceptOffer(offerId: string, claim: { version: number; pla
     return "ACCEPTED" as const;
   }, TX_OPTS);
 
-  if (result === "IDEMPOTENT") return { status: "ACCEPTED", offerId, idempotent: true, settlement: null };
+  if (result === "IDEMPOTENT") {
+    // A retry after a failed settlement must finish it: settleOffer's PayPal writes are request-id keyed, so replay is safe.
+    const cur = await prisma.offer.findUnique({ where: { id: offerId }, select: { status: true } });
+    return { status: "ACCEPTED", offerId, idempotent: true, settlement: cur?.status === "ACCEPTED" ? await settleOffer(offerId, nowMs) : null };
+  }
   if (result === "REFUSED") {
     if (verdict.verdict === "ESCALATED") await notify(pre.loadId, "OPS", "MANUAL_REVIEW", `offer ${offerId} escalated: ${verdict.reasons.join("; ")}`);
     return { status: verdict.verdict === "ESCALATED" ? "ESCALATED" : "BLOCKED", offerId, verdict };

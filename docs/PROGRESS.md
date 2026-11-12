@@ -52,3 +52,30 @@ Monorepo, Prisma schema + append-only triggers, doctor, flags, CI, licence. DB o
 - Tunnel restored: stolen-niagara-ata-wells.trycloudflare.com. Webhook 4LX331612L6716300 repointed by PATCH (ca5930958eaf9), keeping its id. Simulated PAYMENT.CAPTURE.COMPLETED (ca59309fb2ce1) delivered: POST /api/webhooks/paypal 200, signature verified, deduped (simulator reuses its event id).
 - scripts/register-webhook.ts now repoints PAYPAL_WEBHOOK_ID instead of creating a new webhook, and refuses the api.trycloudflare.com host.
 - `pnpm tunnel` (scripts/tunnel.ts) supervises cloudflared and repoints webhook 4LX331612L6716300 on every new URL. Proven by killing cloudflared: it restarted in 2 s, came up at a new URL and repointed (f616490873acb, then f35948466a1b3).
+
+## Phase 4: driver app, vision, geofence (2026-11-12)
+- /driver/<id>?k=<hmac> PWA, checked on a 375x812 viewport:
+  - Check-in, live SSE wait clock and detention, offer card with confirmation sheet (typed "yes" only opened the card).
+  - Guard block shown on the phone ($130 guarantee over the $86.25 ceiling).
+  - Hindi rendering with identical $ strings; payout "sent" then paid.
+- Paid at the gate on DRV-1112060304:
+  - Simulator spoof rejected (287788 km/h teleport); normal exit settled.
+  - Capture 9YE2199251220382U $48.75 (ca593650cbf10), $26.25 released.
+  - Payout via the capture webhook through the tunnel; load PAID_OUT.
+  - Receipt /r/trFB9YwnfMzP verified (audit hash = recomputed).
+- Vision on gemini-3.1-flash-lite (3.8-flash was rate-limited 429 / 503):
+  - gate-in: 4 straps, no defects.
+  - BOL: 09:15/12:40 to 15:15Z/18:40Z; "$900" note ignored.
+  - gate-out: 3 straps, so MISSING_STRAP $38.00 (tariff). The dent's malformed box went to review.
+- Channel3 part purchase:
+  - 1 missing strap, 3 live options ($19.99, $20.99, ...).
+  - Carrier mandate ALLOWED, carrier-paid order 0XK82777CY855345S (ca59378c5daa6) awaiting approval. Capture uses the route proven live in Phase 3.
+- Review fixes:
+  - Evidence uploads (pings, vision) are ops-only; the driver link is accepted only in dev with FLAG_GEOFENCE_SIM.
+  - T10 new-visit-inside never settles.
+  - Same-instant spoof detected; ping-gap times at confidence 0.
+  - Driver HMAC secret required in production.
+  - Voice decline also confirms.
+  - Idempotent accept finishes a failed settlement.
+  - SSE closed guard; 8 MB body cap.
+- Open: receipt hash and agent chain head are not anchored outside the DB.

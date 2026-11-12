@@ -9,8 +9,15 @@ export function fail(status: number, code: string, message: string, extra: Recor
   return NextResponse.json({ error: { code, message, ...extra } }, { status });
 }
 
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
 export async function parseBody<S extends z.ZodType>(req: Request, schema: S): Promise<z.infer<S> | NextResponse> {
-  const raw: unknown = await req.json().catch(() => ({}));
+  // Refuse oversized bodies: the declared length first, then the real one (memory DoS on open routes).
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return fail(413, "too_large", "request body over 8 MB");
+  const text = await req.text();
+  if (text.length > MAX_BODY_BYTES) return fail(413, "too_large", "request body over 8 MB");
+  let raw: unknown = {};
+  try { raw = text ? JSON.parse(text) : {}; } catch { raw = {}; }
   const r = schema.safeParse(raw);
   if (r.success) return r.data;
   return fail(422, "validation_error", "Request validation failed", { details: r.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })) });

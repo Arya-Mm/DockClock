@@ -8,18 +8,34 @@ import { acceptOffer } from "./negotiation";
 import { settleLoad } from "./settle";
 import { appendAction } from "./chain";
 import { notify } from "./executor";
-import { DomainError, fail } from "./http";
+import { DomainError, fail, requireOps } from "./http";
+import { isOn } from "../flags";
 
 // --- Driver link auth ----------------------------------------------------------------------------
 // The driver's phone gets a per-load link: /driver/<loadId>?k=<hmac>. The key only opens that one load.
 // shortcut: HMAC link, not accounts; replace with carrier login when real drivers onboard.
-const secret = () => process.env.DOCKCLOCK_OPS_KEY ?? process.env.PAYPAL_CLIENT_SECRET ?? "dev-only-driver-secret";
+function secret() {
+  const k = process.env.DOCKCLOCK_OPS_KEY ?? process.env.PAYPAL_CLIENT_SECRET;
+  if (k) return k;
+  if (process.env.NODE_ENV === "production") throw new Error("DOCKCLOCK_OPS_KEY must be set in production (driver links)");
+  return "dev-only-driver-secret";
+}
 export const driverKey = (loadId: string) => createHmac("sha256", secret()).update(`driver:${loadId}`).digest("base64url").slice(0, 22);
 
 export function requireDriver(req: Request, loadId: string): Response | null {
   const got = Buffer.from(new URL(req.url).searchParams.get("k") ?? req.headers.get("x-driver-key") ?? "");
   const want = Buffer.from(driverKey(loadId));
   return got.length === want.length && timingSafeEqual(got, want) ? null : fail(401, "unauthorized", "driver link is invalid for this load");
+}
+
+/**
+ * Evidence writers (ELD pings, gate-cam/BOL images) are hardware or ops, never the driver: a driver could fake a trace.
+ * The demo simulator may use the driver link only outside production with FLAG_GEOFENCE_SIM on.
+ */
+export function simOrOps(req: Request, loadId: string): Response | null {
+  if (!requireOps(req)) return null;
+  if (process.env.NODE_ENV !== "production" && isOn("GEOFENCE_SIM") && !requireDriver(req, loadId)) return null;
+  return fail(401, "unauthorized", "evidence uploads need the ops key");
 }
 
 // --- Snapshot (what the phone renders; every number computed here) -------------------------------

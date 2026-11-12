@@ -33,7 +33,12 @@ export function deriveGeofenceEvents(pings: Ping[], f: Facility, opts: { maxSpee
 
   for (let i = 1; i < p.length; i++) {
     const dt = (p[i]!.tMs - p[i - 1]!.tMs) / 3_600_000;
-    if (dt <= 0) { issues.push(`duplicate/out-of-order ping at ${new Date(p[i]!.tMs).toISOString()}`); continue; }
+    if (dt <= 0) {
+      // Same timestamp in two places is a spoof, not a duplicate (no speed check can run on dt = 0).
+      if (haversineM(p[i - 1]!.lat, p[i - 1]!.lng, p[i]!.lat, p[i]!.lng) > 50) { spoof = true; issues.push(`two positions at one instant ${new Date(p[i]!.tMs).toISOString()}`); }
+      else issues.push(`duplicate ping at ${new Date(p[i]!.tMs).toISOString()}`);
+      continue;
+    }
     const kmh = haversineM(p[i - 1]!.lat, p[i - 1]!.lng, p[i]!.lat, p[i]!.lng) / 1000 / dt;
     if (kmh > maxSpeed) { spoof = true; issues.push(`teleport ${Math.round(kmh)} km/h at ${new Date(p[i]!.tMs).toISOString()}`); }
   }
@@ -64,13 +69,14 @@ export function deriveGeofenceEvents(pings: Ping[], f: Facility, opts: { maxSpee
   const gapAfter = lastIn + 1 < p.length ? p[lastIn + 1]!.tMs - p[lastIn]!.tMs : 0;
   if (gapBefore > maxGap) issues.push(`ping gap ${Math.round(gapBefore / 60000)}m before entry — arrival time uncertain`);
   if (gapAfter > maxGap) issues.push(`ping gap ${Math.round(gapAfter / 60000)}m before exit — departure time uncertain`);
-  const lastSeenInside = lastIn === p.length - 1;
+  // T10: judged on the LAST ping, so a truck that came back on a new visit and is still inside never settles.
+  const lastSeenInside = inside[p.length - 1] === true;
 
-  // Spoofed or uncertain streams are still reported, but at confidence 0 so reconciliation can't let them set the clock alone.
+  // Spoofed or uncertain (big ping gap) times are still reported, at confidence 0, so reconciliation can't let them set the clock alone.
   const conf = spoof ? 0 : 1;
-  events.push({ source: "ELD_GEOFENCE", kind: "ARRIVAL", utcMs: p[firstIn]!.tMs, confidence: conf, citation: `${p[firstIn]!.source}@${p[firstIn]!.lat.toFixed(5)},${p[firstIn]!.lng.toFixed(5)}` });
+  events.push({ source: "ELD_GEOFENCE", kind: "ARRIVAL", utcMs: p[firstIn]!.tMs, confidence: gapBefore > maxGap ? 0 : conf, citation: `${p[firstIn]!.source}@${p[firstIn]!.lat.toFixed(5)},${p[firstIn]!.lng.toFixed(5)}` });
   if (!lastSeenInside) {
-    events.push({ source: "ELD_GEOFENCE", kind: "DEPARTURE", utcMs: p[lastIn]!.tMs, confidence: conf, citation: `${p[lastIn]!.source}@${p[lastIn]!.lat.toFixed(5)},${p[lastIn]!.lng.toFixed(5)}` });
+    events.push({ source: "ELD_GEOFENCE", kind: "DEPARTURE", utcMs: p[lastIn]!.tMs, confidence: gapAfter > maxGap ? 0 : conf, citation: `${p[lastIn]!.source}@${p[lastIn]!.lat.toFixed(5)},${p[lastIn]!.lng.toFixed(5)}` });
   } else issues.push("truck still inside geofence — no departure yet");
   return { events: spoof ? [] : events, spoofSuspected: spoof, issues };
 }

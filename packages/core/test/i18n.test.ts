@@ -49,3 +49,19 @@ test("T14: re-entry after more than 30 min outside is a new visit, not billed on
   assert.equal(dep.utcMs, 60 * 60_000);
   assert.ok(r.issues.some((i) => i.includes("new visit")));
 });
+
+test("T10: back inside on a new visit means no departure yet, so no settlement", () => {
+  const r = deriveGeofenceEvents([ping(0, OUT), ping(5, IN), ping(60, IN), ping(65, OUT), ping(100, OUT), ping(110, IN), ping(200, IN)], F, { maxGapMin: 60 });
+  assert.equal(r.events.some((e) => e.kind === "DEPARTURE"), false);
+});
+
+test("T8: two positions at the same instant are a spoof", () => {
+  const r = deriveGeofenceEvents([ping(0, OUT), ping(5, IN), { tMs: 5 * 60_000, lat: 45, lng: -88, source: "ELD" }, ping(60, IN), ping(65, OUT)], F);
+  assert.equal(r.spoofSuspected, true);
+  assert.equal(r.events.length, 0);
+});
+
+test("T9: a long ping gap before exit gives the departure confidence 0", () => {
+  const r = deriveGeofenceEvents([ping(0, OUT), ping(5, IN), ping(60, IN), ping(120, OUT)], F, { maxGapMin: 15 });
+  assert.equal(r.events.find((e) => e.kind === "DEPARTURE")!.confidence, 0);
+});

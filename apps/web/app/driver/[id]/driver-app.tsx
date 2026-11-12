@@ -17,7 +17,7 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
   const [s, setS] = useState(initial);
   const [lang, setLang] = useState<Lang>("en");
   const [offline, setOffline] = useState(false);
-  const [confirming, setConfirming] = useState<Offer | null>(null);
+  const [confirming, setConfirming] = useState<{ offer: Offer; decision: "ACCEPT" | "DECLINE" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "warn" | "stop"; text: string } | null>(null);
   const [heard, setHeard] = useState<string | null>(null);
@@ -74,8 +74,7 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
   function act(text: string, o: Offer) {
     setHeard(text);
     const intent = voiceIntent(text);
-    if (intent === "ACCEPT") setConfirming(o);
-    else if (intent === "DECLINE") void decide(o, "DECLINE");
+    if (intent) setConfirming({ offer: o, decision: intent }); // voice never submits: the card does (A9)
     else setNotice({ tone: "warn", text: L("speak") });
   }
   function listen(o: Offer) {
@@ -132,7 +131,7 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
           {o.door && o.slotStartMs !== null && <span className="rd-muted">{L("door", { door: o.door, time: fmtClock(o.slotStartMs, zone) })}</span>}
           <div className="rd-btn-row">
             <button className="rd-btn rd-btn-ghost" onClick={() => decide(o, "DECLINE")} disabled={busy}>{L("decline")}</button>
-            <button className="rd-btn rd-btn-go" onClick={() => setConfirming(o)} disabled={busy}>{L("accept")}</button>
+            <button className="rd-btn rd-btn-go" onClick={() => setConfirming({ offer: o, decision: "ACCEPT" })} disabled={busy}>{L("accept")}</button>
           </div>
           <div className="rd-voice">
             <button className="rd-btn rd-btn-ghost" onClick={() => listen(o)} disabled={busy || listening} aria-pressed={listening}>
@@ -176,9 +175,9 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
       {confirming && (
         <div className="rd-sheet-bg" role="dialog" aria-modal="true" aria-labelledby="rd-confirm-title" onClick={() => setConfirming(null)}>
           <div className="rd-sheet" onClick={(e) => e.stopPropagation()}>
-            <h2 id="rd-confirm-title">{L("confirmTitle", { amount: fmtUsd(confirming.priceCents) })}</h2>
-            <span>{L(`offerTitle_${confirming.kind}` as MsgKey)}</span>
-            <button className="rd-btn rd-btn-go" onClick={() => decide(confirming, "ACCEPT")} disabled={busy} autoFocus>{L("confirmYes")}</button>
+            <h2 id="rd-confirm-title">{confirming.decision === "ACCEPT" ? L("confirmTitle", { amount: fmtUsd(confirming.offer.priceCents) }) : L("decline")}</h2>
+            <span>{L(`offerTitle_${confirming.offer.kind}` as MsgKey)}, {fmtUsd(confirming.offer.priceCents)}</span>
+            <button className="rd-btn rd-btn-go" onClick={() => decide(confirming.offer, confirming.decision)} disabled={busy} autoFocus>{confirming.decision === "ACCEPT" ? L("confirmYes") : L("decline")}</button>
             <button className="rd-btn rd-btn-ghost" onClick={() => setConfirming(null)}>{L("confirmBack")}</button>
           </div>
         </div>
