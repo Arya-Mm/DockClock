@@ -1,0 +1,67 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec). FREE variant.
+# Render background workers and cron jobs have no free plan, so:
+#   - the worker loop runs inside the web service (apps/web/instrumentation.ts, RUN_WORKER_IN_WEB=1)
+#   - the cron is .github/workflows/cron.yml (GitHub Actions schedule, free) calling /api/cron/{tick,reconcile}
+#   - Postgres is Neon free (Render free Postgres expires after 30 days); set DATABASE_URL by hand
+# Free web services sleep after 15 min idle; the 10-minute cron ping keeps it warm while judging.
+# Paid upgrade (not used, see docs/DECISIONS.md #42): uncomment the worker + cron below and set RUN_WORKER_IN_WEB=0.
+services:
+  - type: web
+    name: dockclock-web
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @dockclock/db migrate && pnpm --filter @dockclock/web build
+    startCommand: pnpm --filter @dockclock/web start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: RUN_WORKER_IN_WEB
+        value: "1"
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: GEMINI_STUDIO_MODEL
+        value: gemini-3.1-flash-lite
+      - key: LLM_DAILY_SPEND_CAP_USD
+        value: "5"
+      - key: DOCKCLOCK_OPS_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AG_GRID_LICENSE_KEY
+        sync: false
+      - key: AG_STUDIO_LICENSE_KEY
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: JUDGE_MODE_SECRET
+        sync: false
+#  - type: worker            # paid (smallest plan 0.5c-512mb)
+#    name: dockclock-worker
+#    runtime: node
+#    plan: starter
+#    buildCommand: corepack enable && pnpm install --frozen-lockfile
+#    startCommand: pnpm worker
+#  - type: cron              # paid
+#    name: dockclock-reconcile
+#    runtime: node
+#    plan: starter
+#    schedule: "30 2 * * *"
+#    buildCommand: corepack enable && pnpm install --frozen-lockfile
+#    startCommand: pnpm reconcile

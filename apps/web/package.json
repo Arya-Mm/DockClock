@@ -18,6 +18,9 @@
     "demo:review": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx worker/demo-review.ts"
   },
   "dependencies": {
+    "@bryntum/core-community": "8.0.0",
+    "@bryntum/scheduler-community": "8.0.0",
+    "@bryntum/scheduler-react-community": "8.0.0",
     "@dockclock/agents": "workspace:*",
     "@dockclock/core": "workspace:*",
     "@dockclock/db": "workspace:*",

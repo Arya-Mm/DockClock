@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@dockclock/db";
-import { handle, parseBody, DomainError } from "@/lib/server/http";
+import { handle, parseBody, DomainError, requireOps } from "@/lib/server/http";
 import { getLoad, moveState } from "@/lib/server/loads";
 
 const Body = z.object({
@@ -14,6 +14,8 @@ const Body = z.object({
 
 /** Append evidence (append-only table). Arrival/departure advances the load state. */
 export const POST = handle(async (req: Request, ctx: RouteContext<"/api/loads/[id]/evidence">) => {
+  const denied = requireOps(req); // money write: ops only once the app is public
+  if (denied) return denied;
   const { id } = await ctx.params;
   const b = await parseBody(req, Body);
   if (b instanceof Response) return b;

@@ -1,0 +1,32 @@
+/* Bryntum themes use light-dark() on :root; the CSS pipeline polyfills it with vars that need a color-scheme on the same element. */
+html:has(.dk-wrap) { color-scheme: light; }
+.dk-wrap { --dk-ink: #1F2328; --dk-mute: #5B636B; --dk-bg: #F6F7F5; --dk-line: #D7DBD6; --dk-go: #00573F; --dk-warn: #B45309;
+  min-height: 100vh; background: var(--dk-bg); color: var(--dk-ink); font-family: system-ui, sans-serif; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; }
+.dk-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.dk-head h1 { margin: 0; font-size: 26px; font-weight: 750; letter-spacing: -0.01em; }
+.dk-head p { margin: 4px 0 0; color: var(--dk-mute); font-size: 14px; }
+.dk-live { color: var(--dk-go); font-weight: 650; } .dk-reconnecting { color: var(--dk-warn); font-weight: 650; }
+.dk-fac { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.dk-fac select { font: inherit; padding: 6px 8px; border: 1px solid var(--dk-line); border-radius: 6px; background: #fff; }
+.dk-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; font-size: 13px; color: var(--dk-mute); }
+.dk-legend li { display: flex; align-items: center; gap: 6px; } .dk-legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.dk-legend .dk-be-key { width: 2px; height: 14px; background: #B91C1C; border-radius: 0; }
+.dk-msg { margin: 0; padding: 8px 12px; background: #fff; border-left: 4px solid var(--dk-go); font-size: 14px; }
+.dk-preview { background: #fff; border: 1px solid var(--dk-line); border-radius: 8px; padding: 12px 16px; max-width: 640px; }
+.dk-preview h2 { margin: 0 0 6px; font-size: 16px; } .dk-preview p { margin: 4px 0; font-size: 14px; }
+.dk-warn { color: var(--dk-warn); font-weight: 600; } .dk-note { color: var(--dk-mute); }
+.dk-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.dk-actions button { font: inherit; font-weight: 650; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--dk-go); background: var(--dk-go); color: #fff; cursor: pointer; }
+.dk-actions .dk-secondary { background: #fff; color: var(--dk-go); }
+.dk-actions button:focus-visible, .dk-fac select:focus-visible { outline: 3px solid #2F6FB2; outline-offset: 2px; }
+.dk-actions button:disabled { opacity: .6; cursor: wait; }
+.dk-board { display: flex; flex-direction: column; min-height: 420px; height: calc(100vh - 220px); border: 1px solid var(--dk-line); border-radius: 8px; overflow: hidden; background: #fff; }
+.dk-board > .b-scheduler { flex: 1; height: auto !important; }
+.dk-loading { padding: 24px; color: var(--dk-mute); }
+.dk-board .b-sch-event { position: relative; overflow: hidden; }
+.dk-ev-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+/* A live bar ends at now; pin its label there so it stays on screen. */
+.dk-board .b-sch-event-content:has(.dk-ev-live) { flex: 1; justify-content: flex-end; }
+.dk-be { position: absolute; top: 0; bottom: 0; width: 2px; background: #B91C1C; box-shadow: 0 0 0 1px #fff; pointer-events: none; }
+.dk-syn { margin-left: 6px; font-size: 11px; opacity: .75; }
+@media (max-width: 640px) { .dk-wrap { padding: 16px; } .dk-board { height: 70vh; } }

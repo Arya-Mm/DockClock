@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@dockclock/db";
 import { paypalRequestId } from "@dockclock/core";
 import { refundCapture } from "@dockclock/paypal";
-import { handle, parseBody, DomainError } from "@/lib/server/http";
+import { handle, parseBody, DomainError, requireOps } from "@/lib/server/http";
 import { getLoad } from "@/lib/server/loads";
 import { recorded } from "@/lib/server/ops";
 import { notify } from "@/lib/server/executor";
@@ -11,6 +11,8 @@ const Body = z.object({ reason: z.enum(["DISPUTE_LOST", "GOODWILL"]).default("DI
 
 /** M15: refund after a lost dispute. Full refund of the capture; the PayPalOp row is the ledger reversal record. */
 export const POST = handle(async (req: Request, ctx: RouteContext<"/api/loads/[id]/refund">) => {
+  const denied = requireOps(req); // money write: ops only once the app is public
+  if (denied) return denied;
   const { id } = await ctx.params;
   const b = await parseBody(req, Body);
   if (b instanceof Response) return b;

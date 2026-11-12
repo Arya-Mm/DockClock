@@ -1,0 +1,28 @@
+# Free stand-in for Render Cron (paid). Needs repo secrets DOCKCLOCK_URL (e.g. https://dockclock-web.onrender.com)
+# and DOCKCLOCK_OPS_KEY. Scheduled runs can start a few minutes late; the tick is idempotent.
+name: cron
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # worker tick + keeps the free instance awake
+    - cron: "30 2 * * *"     # nightly reconcile vs PayPal Transaction Search
+  workflow_dispatch:
+    inputs:
+      job: { description: "tick or reconcile", default: tick }
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DOCKCLOCK_CRON_ENABLED != 'false' }}
+    steps:
+      - name: call DockClock
+        env:
+          URL: ${{ secrets.DOCKCLOCK_URL }}
+          KEY: ${{ secrets.DOCKCLOCK_OPS_KEY }}
+          JOB: ${{ github.event.inputs.job || (github.event.schedule == '30 2 * * *' && 'reconcile' || 'tick') }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "DOCKCLOCK_URL / DOCKCLOCK_OPS_KEY not set; skipping"; exit 0; fi
+          # A sleeping free instance takes about a minute to wake: retry for up to ~3 min.
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o out.json -w '%{http_code}' -m 150 -X POST -H "x-ops-key: $KEY" "$URL/api/cron/$JOB") && [ "$code" = 200 ] && { cat out.json; exit 0; }
+            echo "attempt $i: HTTP $code"; sleep 30
+          done
+          exit 1

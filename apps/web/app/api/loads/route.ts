@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@dockclock/db";
 import { DEMO_CONTRACT } from "@dockclock/core";
-import { handle, parseBody } from "@/lib/server/http";
+import { handle, parseBody, requireOps } from "@/lib/server/http";
 
 const Body = z.object({
   facilityId: z.string().min(1),
@@ -11,6 +11,8 @@ const Body = z.object({
 
 /** Dispatch a new (non-synthetic) load. */
 export const POST = handle(async (req: Request) => {
+  const denied = requireOps(req);
+  if (denied) return denied;
   const b = await parseBody(req, Body);
   if (b instanceof Response) return b;
   const carrier = b.carrierId ? { id: b.carrierId } : await prisma.carrierProfile.findFirstOrThrow({ orderBy: { id: "asc" } });

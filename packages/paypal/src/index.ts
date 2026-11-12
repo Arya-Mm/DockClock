@@ -5,6 +5,8 @@
 // sender_batch_id; final_capture releases the remainder; reauth gated by authLifecycle; vault on first approval.
 import { paypalRequestId as requestId, centsToPayPal as centsToValue } from "@dockclock/core/ledger";
 
+import { ApiError, Client, Environment, OrdersController, PaymentsController, type ApiResponse } from "@paypal/paypal-server-sdk";
+
 export const PAYPAL_BASE = process.env.PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 
 export interface PayPalResult<T> { data: T; debugId: string | null; status: number; requestId: string | null }
@@ -163,9 +165,42 @@ export function captureOrder(loadId: string, orderId: string, stage: string) {
 
 export const approveLinkOf = (o: Order) => o.links?.find((l) => l.rel === "payer-action" || l.rel === "approve")?.href ?? null;
 
-export function getOrder(orderId: string) { return call<Order>("GET", `/v2/checkout/orders/${orderId}`); }
-export function getAuthorization(id: string) { return call<Authorization>("GET", `/v2/payments/authorizations/${id}`); }
-export function getCapture(id: string) { return call<Capture>("GET", `/v2/payments/captures/${id}`); }
+// Read paths go through the APIMatic-generated PayPal Server SDK (PLAN §7.5); money writes stay on REST above so every
+// write keeps our stage-scoped PayPal-Request-Id. PAYPAL_READS=rest switches reads back to REST.
+// Docs: https://developer.paypal.com/serversdk/typescript/getting-started/how-to-get-started
+export function getOrder(orderId: string) {
+  return useSdk() ? sdkRead<Order>((c) => new OrdersController(c).getOrder({ id: orderId }), `GET /v2/checkout/orders/${orderId}`) : call<Order>("GET", `/v2/checkout/orders/${orderId}`);
+}
+export function getAuthorization(id: string) {
+  return useSdk() ? sdkRead<Authorization>((c) => new PaymentsController(c).getAuthorizedPayment({ authorizationId: id }), `GET /v2/payments/authorizations/${id}`) : call<Authorization>("GET", `/v2/payments/authorizations/${id}`);
+}
+export function getCapture(id: string) {
+  return useSdk() ? sdkRead<Capture>((c) => new PaymentsController(c).getCapturedPayment({ captureId: id }), `GET /v2/payments/captures/${id}`) : call<Capture>("GET", `/v2/payments/captures/${id}`);
+}
+
+const useSdk = () => process.env.PAYPAL_READS !== "rest";
+let sdkClient: Client | null = null;
+function sdk(): Client {
+  if (sdkClient) return sdkClient;
+  const id = process.env.PAYPAL_CLIENT_ID, secret = process.env.PAYPAL_CLIENT_SECRET;
+  if (!id || !secret) throw new PayPalError(0, null, null, "PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET missing");
+  return (sdkClient = new Client({ clientCredentialsAuthCredentials: { oAuthClientId: id, oAuthClientSecret: secret }, timeout: 30_000,
+    environment: process.env.PAYPAL_ENV === "live" ? Environment.Production : Environment.Sandbox }));
+}
+/** Same result shape as REST: PayPal's own snake_case JSON (the raw body, not the SDK's camelCase model) plus debug_id. */
+async function sdkRead<T>(fn: (c: Client) => Promise<ApiResponse<unknown>>, what: string): Promise<PayPalResult<T>> {
+  try {
+    const r = await fn(sdk());
+    return { data: JSON.parse(String(r.body)) as T, debugId: r.headers["paypal-debug-id"] ?? null, status: r.statusCode, requestId: null };
+  } catch (e) {
+    if (e instanceof ApiError) {
+      const debugId = e.headers?.["paypal-debug-id"] ?? null;
+      let body: unknown = e.body; try { body = JSON.parse(String(e.body)); } catch { /* keep raw */ }
+      throw new PayPalError(e.statusCode, debugId, body, `${what} -> ${e.statusCode} (debug_id=${debugId})`);
+    }
+    throw e;
+  }
+}
 
 /** final_capture:true releases any uncaptured remainder of the hold (M16). */
 export function captureFinal(loadId: string, authorizationId: string, cents: number, stage = "settle") {
