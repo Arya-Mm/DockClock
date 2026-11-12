@@ -60,3 +60,10 @@ Assumptions made, and places where the plan is likely wrong. PLAN.md still wins;
 39. **A lost dispute is reversed by PayPal itself.** We record the reversal; recovering the carrier's share is a human step (notification).
 40. **The Studio AI stays on free Gemini.** One analyst agent, lite models rotated on 429, paced calls, query-shape instructions. Studio's 5-agent harness made 15-25 calls per question, which the free tier cannot serve. The user declined paid Gemini.
 41. **The analyst cannot add widgets.** Studio's add_widget tool leaves widgets unconfigured, so a model-added chart showed "No data". Answers come from executeQuery; the built-in report already charts both questions.
+
+## Phase 6 (paid services avoided; include in the final report)
+42. **Render background worker, cron job and paid web plan are NOT used: they are paid on Render.** BUILD_KIT Phase 6 asks for "web (paid plan), worker, cron, Postgres". All four stay in render.yaml so the architecture is visible, but the paid ones are optional. Free alternatives in use:
+    - **Worker** (executor, watchdog, capture/payout poll fallback, evidence retry) runs inside the free web service on a timer (instrumentation hook), with the same code as `pnpm worker`.
+    - **Cron** (nightly reconcile) is a free GitHub Actions `schedule:` workflow calling a protected `/api/cron/reconcile` endpoint with the ops key.
+    - **Postgres** stays on Neon free (no 30-day expiry), not Render's free Postgres (expires after 30 days).
+    - **Web service** uses Render's free plan. It sleeps after 15 min idle, so the first request after sleep is slow; the free cron ping keeps it awake during judging.
