@@ -37,7 +37,7 @@ export function transition(from: LoadState, to: LoadState): LoadState {
  * capture through. One stage => one key => PayPal returns the original result.
  * PayPal-Request-Id max length is 108 chars.
  */
-export type PayPalOp = "ORDER" | "AUTHORIZE" | "REAUTHORIZE" | "CAPTURE" | "VOID" | "PAYOUT" | "INVOICE" | "REFUND" | "EVIDENCE";
+export type PayPalOp = "ORDER" | "AUTHORIZE" | "REAUTHORIZE" | "CAPTURE" | "VOID" | "PAYOUT" | "INVOICE" | "REFUND" | "EVIDENCE" | "TRACKING";
 export function paypalRequestId(loadId: string, op: PayPalOp, stage: string | number): string {
   return "dc-" + createHash("sha256").update(`${loadId}|${op}|${stage}`).digest("hex").slice(0, 40);
 }

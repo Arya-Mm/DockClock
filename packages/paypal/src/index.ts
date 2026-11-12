@@ -202,6 +202,17 @@ async function sdkRead<T>(fn: (c: Client) => Promise<ApiResponse<unknown>>, what
   }
 }
 
+/**
+ * Shipment tracking on the order (PLAN §5 "+"): attaches the load as a shipment to the captured order, so the payer
+ * sees it in PayPal. Not a money write, but still idempotent per load.
+ * Doc: https://developer.paypal.com/docs/api/orders/v2/#orders_track_create
+ */
+export function addOrderTracking(loadId: string, orderId: string, captureId: string, trackingNumber: string) {
+  return call<Order>("POST", `/v2/checkout/orders/${orderId}/track`, {
+    capture_id: captureId, tracking_number: trackingNumber, carrier: "OTHER", carrier_name_other: "DockClock freight load", notify_payer: false,
+  }, requestId(loadId, "TRACKING", trackingNumber));
+}
+
 /** final_capture:true releases any uncaptured remainder of the hold (M16). */
 export function captureFinal(loadId: string, authorizationId: string, cents: number, stage = "settle") {
   return call<Capture>("POST", `/v2/payments/authorizations/${authorizationId}/capture`, {
