@@ -19,7 +19,9 @@ import {
   type AgStudioMode,
 } from 'ag-studio';
 import { AgStudio, AgStudioProvider } from 'ag-studio-react';
-import type { DashboardData } from '@/lib/dashboard-data';
+import type { StudioData } from '@/lib/studio-data';
+import { createWidgets } from 'ag-studio-react';
+import { facilityQuadrantWidget } from './studio/quadrant';
 import { AppShell } from './components/app-shell';
 import {
   CreateReportDialog,
@@ -47,7 +49,7 @@ import { DashboardSkeleton } from './components/skeleton';
 import * as reportState from './report-state';
 import { buildAi } from './studio/ai';
 import { buildStudioData, hasData } from './studio/data';
-import { agStudioPayPalTheme } from './studio/theme';
+import { agStudioDockClockTheme } from './studio/theme';
 import { useReports } from './use-reports';
 
 if (process.env.NODE_ENV !== 'production') {
@@ -55,7 +57,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 type DashboardProps = {
-  data: DashboardData;
+  data: StudioData;
   licenseKey?: string;
   /** OpenAI models the assistant may use; omitted when no key is configured, which hides the assistant. */
   aiModels?: string[];
@@ -96,6 +98,9 @@ function ReportsDashboard({ data, licenseKey, aiModels }: DashboardProps) {
   const [initialState] = useState(() => reportState.withFiltersPanelFor('view', saved.state));
   const state = studioState ?? initialState;
   const studioData = useMemo(() => buildStudioData(data), [data]);
+  // Custom facility quadrant widget (PLAN §7.1) and the scorecard it draws, passed through Studio's context.
+  const widgets = useMemo(() => createWidgets({ additionalTypes: [facilityQuadrantWidget], menu: [{ label: 'DockClock', widgetIds: ['facilityQuadrant'] as never }] } as never), []);
+  const studioContext = useMemo(() => ({ facilities: data.facilities }), [data.facilities]);
   // `ai` is read once, when Studio is created.
   const ai = useMemo(() => (aiModels?.length ? buildAi(aiModels) : undefined), [aiModels]);
 
@@ -260,11 +265,13 @@ function ReportsDashboard({ data, licenseKey, aiModels }: DashboardProps) {
           <AgStudioProvider licenseKey={licenseKey} modules={ai ? [AgStudioAiModule] : undefined}>
             <AgStudio
               style={{ height: '100%', width: '100%' }}
-              theme={agStudioPayPalTheme}
+              theme={agStudioDockClockTheme}
               layout={{ widgetBorderEnabled: true }}
               data={studioData}
               ai={ai}
               initialState={initialState}
+              widgets={widgets}
+              context={studioContext}
               mode={mode}
               onApiReady={(event) => {
                 apiRef.current = event.api;

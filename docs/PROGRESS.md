@@ -115,3 +115,13 @@ Tests: core 53, agents 10, db 2, paypal 3, red-team 12/12.
 - Blocker: AG_GRID_LICENSE_KEY holds the AG Studio licence, which AG Grid Enterprise rejects ("Invalid License Key"; watermark). A real AG Grid Enterprise key is needed.
 - Fixed: /dashboard read process.env.AG_STUDIO instead of AG_STUDIO_LICENSE_KEY.
 - Next: AG Studio dashboard (DockClock sources with field descriptions, facility quadrant widget, the 2 NL prompts via Gemini, brand theme, saved state).
+- Upgraded AG Studio 3.0 -> 3.1.0, with the exact deps it requires: ag-grid-* 36.3.0, ag-charts-enterprise 14.3.0. Typecheck clean.
+- /dashboard is now the DockClock Studio dashboard (reusing the boilerplate's saved-reports shell):
+  - Data sources ledger / facilities / agentActions, with a description on every field.
+  - Built-in report: KPIs, leakage vs captured by facility, the custom facilityQuadrant widget, ledger grid; agents page with verdict donut, by-reason bar and grid.
+  - DockClock theme; saved state per report (localStorage key dockclock:reports:v1). No Studio console errors; the Studio licence is accepted.
+- NL queries: Studio 3.1 Agent Framework on Gemini via /api/ai/gemini (key server-side, F4 cap, retry):
+  - Fixed live: inline tool results; thought signatures keyed by callId with the documented skip placeholder; JSON output with tools.
+  - Live run: the lead delegated, the Data agent read the schema, ran queries and created a calculated column (appointment_month).
+  - It did not finish: free-tier Gemini hit 60 s+ turns and the per-minute quota (429), because one question costs 15-25 model calls across 5 agents.
+  - Needs a billing-enabled Gemini key (or a faster model) to complete.

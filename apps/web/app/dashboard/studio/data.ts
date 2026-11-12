@@ -1,251 +1,78 @@
-// AG Studio's data sources for the dashboard: a table for each row type in lib/dashboard-data.ts,
-// the relationships between them, a shared calendar and a few calculated measures.
+// AG Studio data sources for the DockClock dashboard. Every field carries a description: Studio's agents read them
+// to answer natural-language questions ("Which facilities leak the most money this month?").
+import type { AgDataSourcesDefinition, AgFieldDefinition, AgFormat } from 'ag-studio';
+import type { StudioData } from '@/lib/studio-data';
 
-import type {
-  AgDataSourcesDefinition,
-  AgExpressionFieldDefinition,
-  AgFieldDefinition,
-  AgFormat,
-  AgRelationDefinition,
-} from 'ag-studio';
-import type { DashboardData } from '@/lib/dashboard-data';
+type FieldSpec = [id: string, name: string, format: AgFormat, description: string];
+const fields = (specs: FieldSpec[]): AgFieldDefinition[] => specs.map(([id, name, format, description]) => ({ id, name, format, description }));
 
-// --- Helpers ----------------------------------------------------------------------
+export const hasData = (data: StudioData) => data.ledger.length > 0;
 
-const CALENDAR_ID = 'calendar';
-
-// [id, name, format, hide?]
-type FieldSpec = [id: string, name: string, format: AgFormat, hide?: boolean];
-
-const fields = (specs: FieldSpec[]): AgFieldDefinition[] =>
-  specs.map(([id, name, format, hide]) => ({ id, name, format, ...(hide && { hide }) }));
-
-// Foreign key 'table.field' -> primary key 'table.field'.
-const manyToOne = (id: string, source: string, target: string): AgRelationDefinition => {
-  const [sourceTable, sourceField] = source.split('.');
-  const [targetTable, targetField] = target.split('.');
+export function buildStudioData(data: StudioData): AgDataSourcesDefinition {
   return {
-    id,
-    source: { tableId: sourceTable, fieldId: sourceField },
-    target: { tableId: targetTable, fieldId: targetField },
-    type: 'many-to-one',
-  };
-};
-
-const onCalendar = (tableId: string, fieldId: string, truncate?: 'day'): AgRelationDefinition => ({
-  id: `${tableId}-${fieldId}-calendar`,
-  source: { tableId, fieldId },
-  target: { calendarId: CALENDAR_ID },
-  ...(truncate && { truncate }),
-});
-
-const sumOf = (id: string) => ({ id, aggregation: 'sum' as const });
-
-const ratio = (id: string, name: string, description: string, numerator: string, denominator: string): AgExpressionFieldDefinition => ({
-  id,
-  name,
-  description,
-  format: 'percentageFormat',
-  isMeasure: true,
-  expression: { operator: 'divide', inputs: [sumOf(numerator), sumOf(denominator)] },
-});
-
-// --- Data sources -----------------------------------------------------------------
-
-
-// Whether the PayPal account has anything to report on. Without it, Studio would only show empty widgets.
-export const hasData = (data: DashboardData) =>
-  [data.invoices, data.transactions, data.products, data.plans, data.balances].some((rows) => rows.length > 0);
-
-export function buildStudioData(data: DashboardData): AgDataSourcesDefinition {
-  const dates = [
-    ...data.invoices.map((r) => r.invoiceDate),
-    ...data.invoicePayments.map((r) => r.date),
-    ...data.transactions.map((r) => r.date?.slice(0, 10)),
-  ]
-    .filter((d): d is string => !!d)
-    .sort();
-  const today = data.asOf.slice(0, 10);
-
-  return {
-    description:
-      'PayPal sandbox data fetched over the REST API for a merchant that sells subscription products and sends invoices. ' +
-      'Invoices are in USD, EUR or GBP and are not converted, so filter by currency before summing money. ' +
-      'Invoice payments are recorded externally (bank transfer, card, check, cash). The ledger holds payouts to affiliates, creators and customers.',
     sources: [
       {
-        id: 'customers',
-        description: 'Invoice recipients, keyed by lower-cased email.',
-        data: data.customers,
+        id: 'ledger',
+        name: 'Settlement ledger',
+        description: 'One row per truck stop at a dock: detention owed, captured from the shipper PayPal hold, paid to the carrier, and leakage. Seeded rows have source Synthetic.',
+        data: data.ledger,
         fields: fields([
-          ['id', 'Customer ID', 'textFormat', true],
-          ['name', 'Customer', 'textFormat'],
-          ['company', 'Company', 'textFormat'],
-          ['email', 'Email', 'textFormat'],
+          ['loadId', 'Load', 'textFormat', 'Unique load (stop) identifier'],
+          ['facilityId', 'Facility id', 'textFormat', 'Warehouse or terminal id where the truck waited'],
+          ['facilityName', 'Facility', 'textFormat', 'Warehouse or terminal name where the truck waited'],
+          ['carrierName', 'Carrier', 'textFormat', 'Trucking company that hauled the load'],
+          ['appointment', 'Appointment', 'dateTimeFormat', 'Scheduled dock appointment (UTC). Use for "this month" questions.'],
+          ['week', 'Week', 'textFormat', 'ISO week of the appointment, e.g. 2026-W46'],
+          ['arrivalClass', 'Arrival', 'textFormat', 'EARLY, ON_TIME or LATE against appointment plus grace'],
+          ['action', 'Outcome', 'textFormat', 'Settlement outcome on PayPal: VOID, CAPTURE, CAPTURE_AND_INVOICE or HOLD_FOR_REVIEW'],
+          ['state', 'State', 'textFormat', 'Load state machine state, e.g. PAID_OUT, NEEDS_REVIEW'],
+          ['source', 'Source', 'textFormat', 'Synthetic for the seeded network, Live sandbox for real PayPal sandbox loads'],
+          ['needsReview', 'Needs review', 'booleanFormat', 'True when evidence was too weak to move money automatically'],
+          ['dwellMin', 'Dwell (min)', 'integerFormat', 'Minutes on site counted by the detention clock'],
+          ['billableMin', 'Billable (min)', 'integerFormat', 'Minutes billed after free time, carrier delays and closed hours'],
+          ['chargeUsd', 'Owed', 'currencyFormat', 'Total owed by the shipper (detention plus shipper line items), USD'],
+          ['capturedUsd', 'Captured', 'currencyFormat', 'Captured from the shipper PayPal authorization hold, USD'],
+          ['releasedUsd', 'Released', 'currencyFormat', 'Uncaptured hold released back to the shipper, USD'],
+          ['invoicedUsd', 'Invoiced', 'currencyFormat', 'Billed by PayPal invoice above the capture ceiling, USD'],
+          ['carrierPayoutUsd', 'Carrier paid', 'currencyFormat', 'Paid to the carrier via PayPal Payouts, USD'],
+          ['claimedUsd', 'Claimed', 'currencyFormat', 'What the carrier claims on paper, USD'],
+          ['leakageUsd', 'Leakage', 'currencyFormat', 'Money the carrier claims but could not be captured with evidence (claimed minus captured, floor 0), USD. "Leaks money" means this field.'],
         ]),
       },
       {
-        id: 'invoices',
-        description:
-          'One row per invoice. Issued amount excludes drafts, scheduled and cancelled invoices. Outstanding and aging apply only to open or partially paid invoices.',
-        data: data.invoices,
+        id: 'facilities',
+        name: 'Facility scorecard',
+        description: 'One row per facility: average dwell against recovery rate, with captured dollars and its quadrant.',
+        data: data.facilities,
         fields: fields([
-          ['id', 'Invoice ID', 'textFormat', true],
-          ['number', 'Invoice', 'textFormat'],
-          ['customerId', 'Customer ID', 'textFormat', true],
-          ['status', 'Invoice Status', 'textFormat'],
-          ['statusGroup', 'Status Group', 'textFormat'],
-          ['currency', 'Currency', 'textFormat'],
-          ['paymentTerm', 'Payment Term', 'textFormat'],
-          ['invoiceDate', 'Invoice Date', 'dateFormat'],
-          ['dueDate', 'Due Date', 'dateFormat'],
-          ['total', 'Invoice Total', 'currencyFormat'],
-          ['issuedAmount', 'Invoiced', 'currencyFormat'],
-          ['paidAmount', 'Paid', 'currencyFormat'],
-          ['refundedAmount', 'Refunded', 'currencyFormat'],
-          ['netCollected', 'Net Collected', 'currencyFormat'],
-          ['isReceivable', 'Is Receivable', 'booleanFormat'],
-          ['outstanding', 'Outstanding', 'currencyFormat'],
-          ['overdueAmount', 'Overdue', 'currencyFormat'],
-          ['daysOverdue', 'Days Overdue', 'integerFormat'],
-          ['agingBucket', 'Aging Bucket', 'textFormat'],
-          ['daysToPay', 'Days to Pay', 'integerFormat'],
-          ['taxTotal', 'Tax', 'currencyFormat'],
+          ['facilityId', 'Facility id', 'textFormat', 'Warehouse or terminal id'],
+          ['facilityName', 'Facility', 'textFormat', 'Warehouse or terminal name'],
+          ['loads', 'Loads', 'integerFormat', 'Number of stops at the facility'],
+          ['avgDwellMin', 'Average dwell (min)', 'integerFormat', 'Average minutes on site'],
+          ['detentionRate', 'Detention rate', 'percentageFormat', 'Share of stops that ran into billable detention'],
+          ['recoveryRate', 'Recovery rate', 'percentageFormat', 'Captured divided by owed or claimed, whichever is larger'],
+          ['capturedUsd', 'Captured', 'currencyFormat', 'Total captured from PayPal holds at the facility, USD'],
+          ['leakageUsd', 'Leakage', 'currencyFormat', 'Total leakage at the facility, USD'],
+          ['quadrant', 'Quadrant id', 'textFormat', 'FAST_AND_FAIR, SLOW_BUT_PAYS, FAST_BUT_DISPUTES or REVENUE_LEAK (network-median split)'],
+          ['quadrantLabel', 'Quadrant', 'textFormat', 'Readable quadrant name'],
         ]),
       },
       {
-        id: 'invoiceItems',
-        name: 'Invoice Line Items',
-        description: 'Invoice lines. Line total is after line discount and tax, before invoice-level discount and shipping.',
-        data: data.invoiceItems,
+        id: 'agentActions',
+        name: 'Agent actions',
+        description: 'Hash-chained log of every AI agent move: proposals, accepts, executions, and what the mandate guard BLOCKED or ESCALATED, with the reason.',
+        data: data.agentActions,
         fields: fields([
-          ['id', 'Line ID', 'textFormat', true],
-          ['invoiceId', 'Invoice ID', 'textFormat', true],
-          ['name', 'Item', 'textFormat'],
-          ['unit', 'Unit', 'textFormat'],
-          ['quantity', 'Quantity', 'decimalFormat'],
-          ['unitPrice', 'Unit Price', 'currencyFormat'],
-          ['gross', 'Gross', 'currencyFormat'],
-          ['discount', 'Line Discount', 'currencyFormat'],
-          ['tax', 'Line Tax', 'currencyFormat'],
-          ['lineTotal', 'Line Total', 'currencyFormat'],
+          ['seq', 'Sequence', 'integerFormat', 'Position in the hash chain'],
+          ['agent', 'Agent', 'textFormat', 'FACILITY, CARRIER or SHIPPER_TREASURY'],
+          ['action', 'Action', 'textFormat', 'PROPOSE, ACCEPT, EXECUTE, PAY, RECEIPT or a carrier decision'],
+          ['verdict', 'Verdict', 'textFormat', 'ALLOWED, BLOCKED or ESCALATED by the mandate guard'],
+          ['reason', 'Reason', 'textFormat', 'First reason the guard gave (none when allowed). Use for "blocked agent actions by reason".'],
+          ['amountUsd', 'Amount', 'currencyFormat', 'Engine-priced amount the action concerned, USD'],
+          ['mandateId', 'Mandate', 'textFormat', 'Spending mandate that was checked'],
+          ['createdAt', 'At', 'dateTimeFormat', 'When the action was logged (UTC)'],
         ]),
       },
-      {
-        id: 'invoicePayments',
-        name: 'Invoice Payments',
-        description: 'Payments and refunds recorded against invoices. Signed amount is negative for refunds; sum it for net cash.',
-        data: data.invoicePayments,
-        fields: fields([
-          ['id', 'Payment ID', 'textFormat', true],
-          ['invoiceId', 'Invoice ID', 'textFormat', true],
-          ['kind', 'Payment Kind', 'textFormat'],
-          ['method', 'Payment Method', 'textFormat'],
-          ['date', 'Payment Date', 'dateFormat'],
-          ['amount', 'Payment Amount', 'currencyFormat'],
-          ['signedAmount', 'Net Cash', 'currencyFormat'],
-        ]),
-      },
-      {
-        id: 'products',
-        description: 'Catalog products sold as subscriptions.',
-        data: data.products,
-        fields: fields([
-          ['id', 'Product ID', 'textFormat', true],
-          ['name', 'Product', 'textFormat'],
-          ['type', 'Product Type', 'textFormat'],
-          ['category', 'Product Category', 'textFormat'],
-          ['description', 'Product Description', 'textFormat'],
-        ]),
-      },
-      {
-        id: 'plans',
-        name: 'Billing Plans',
-        description: 'Subscription billing plans, in USD. Monthly price normalises weekly, quarterly and annual pricing to one month.',
-        data: data.plans,
-        fields: fields([
-          ['id', 'Plan ID', 'textFormat', true],
-          ['productId', 'Product ID', 'textFormat', true],
-          ['name', 'Plan', 'textFormat'],
-          ['status', 'Plan Status', 'textFormat'],
-          ['billingInterval', 'Billed', 'textFormat'],
-          ['price', 'Price', 'currencyFormat'],
-          ['monthlyPrice', 'Monthly Price', 'currencyFormat'],
-          ['trialDays', 'Trial Days', 'integerFormat'],
-          ['setupFee', 'Setup Fee', 'currencyFormat'],
-        ]),
-      },
-      {
-        id: 'transactions',
-        description: 'Account ledger from Transaction Search, last 31 days. Amounts are signed (debits negative); net is amount plus fee.',
-        data: data.transactions,
-        fields: fields([
-          ['id', 'Transaction ID', 'textFormat'],
-          ['date', 'Transaction Date', 'dateTimeFormat'],
-          ['eventType', 'Event Type', 'textFormat'],
-          ['status', 'Transaction Status', 'textFormat'],
-          ['direction', 'Direction', 'textFormat'],
-          ['currency', 'Transaction Currency', 'textFormat', true],
-          ['amount', 'Transaction Amount', 'currencyFormat'],
-          ['fee', 'Transaction Fee', 'currencyFormat'],
-          ['net', 'Transaction Net', 'currencyFormat'],
-          ['endingBalance', 'Ending Balance', 'currencyFormat'],
-          ['counterparty', 'Counterparty', 'textFormat'],
-          ['note', 'Transaction Note', 'textFormat'],
-        ]),
-      },
-      {
-        id: 'payouts',
-        description: 'Individual payouts sent from the account, as positive USD amounts, grouped into campaigns.',
-        data: data.payouts,
-        fields: fields([
-          ['id', 'Payout ID', 'textFormat', true],
-          ['campaign', 'Campaign', 'textFormat'],
-          ['recipient', 'Recipient', 'textFormat'],
-          ['date', 'Payout Date', 'dateTimeFormat'],
-          ['status', 'Payout Status', 'textFormat'],
-          ['amount', 'Payout Amount', 'currencyFormat'],
-          ['fee', 'Payout Fee', 'currencyFormat'],
-          ['note', 'Payout Note', 'textFormat'],
-        ]),
-      },
-      {
-        id: 'balances',
-        description: 'Current account balance per currency.',
-        data: data.balances,
-        fields: fields([
-          ['currency', 'Balance Currency', 'textFormat'],
-          ['total', 'Total Balance', 'currencyFormat'],
-          ['available', 'Available Balance', 'currencyFormat'],
-          ['withheld', 'Withheld Balance', 'currencyFormat'],
-        ]),
-      },
-    ],
-    relationships: [
-      manyToOne('invoice-customer', 'invoices.customerId', 'customers.id'),
-      manyToOne('item-invoice', 'invoiceItems.invoiceId', 'invoices.id'),
-      manyToOne('payment-invoice', 'invoicePayments.invoiceId', 'invoices.id'),
-      manyToOne('plan-product', 'plans.productId', 'products.id'),
-      onCalendar('invoices', 'invoiceDate'),
-      onCalendar('invoicePayments', 'date'),
-      onCalendar('transactions', 'date', 'day'),
-      onCalendar('payouts', 'date', 'day'),
-    ],
-    calendars: [
-      {
-        id: CALENDAR_ID,
-        label: 'Calendar',
-        range: {
-          from: { type: 'date', value: dates[0] ?? today },
-          to: { type: 'date', value: dates.at(-1) ?? today },
-        },
-        fragments: ['year', 'quarter', 'month', 'week', 'day', 'dayOfWeek'],
-      },
-    ],
-    expressions: [
-      ratio('collectionRate', 'Collection Rate', 'Paid / invoiced. Filter to one currency first.', 'invoices.paidAmount', 'invoices.issuedAmount'),
-      ratio('overdueShare', 'Overdue Share', 'Share of outstanding receivables that is past due.', 'invoices.overdueAmount', 'invoices.outstanding'),
-      ratio('refundRate', 'Refund Rate', 'Refunded / paid.', 'invoices.refundedAmount', 'invoices.paidAmount'),
     ],
   };
 }
