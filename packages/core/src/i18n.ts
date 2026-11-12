@@ -38,6 +38,9 @@ const T = {
   noDetention: { en: "No detention owed on this stop", es: "No se debe detención en esta parada", hi: "इस स्टॉप पर कोई डिटेंशन नहीं", pa: "ਇਸ ਸਟਾਪ 'ਤੇ ਕੋਈ ਡਿਟੈਂਸ਼ਨ ਨਹੀਂ" },
   review: { en: "A person is checking the times", es: "Una persona está revisando los horarios", hi: "एक व्यक्ति समय जाँच रहा है", pa: "ਇੱਕ ਵਿਅਕਤੀ ਸਮਾਂ ਜਾਂਚ ਰਿਹਾ ਹੈ" },
   receipt: { en: "Open receipt", es: "Abrir recibo", hi: "रसीद खोलें", pa: "ਰਸੀਦ ਖੋਲ੍ਹੋ" },
+  findPart: { en: "Find the missing part", es: "Buscar la pieza faltante", hi: "गायब पुर्ज़ा खोजें", pa: "ਗੁੰਮ ਪੁਰਜ਼ਾ ਲੱਭੋ" },
+  noPartMissing: { en: "The gate camera shows nothing missing", es: "La cámara de la puerta no muestra nada faltante", hi: "गेट कैमरा में कुछ गायब नहीं दिखा", pa: "ਗੇਟ ਕੈਮਰੇ ਵਿੱਚ ਕੁਝ ਗੁੰਮ ਨਹੀਂ ਦਿਸਿਆ" },
+  buyFor: { en: "Buy for {amount}", es: "Comprar por {amount}", hi: "{amount} में खरीदें", pa: "{amount} ਵਿੱਚ ਖ਼ਰੀਦੋ" },
   offline: { en: "No signal. Your clock keeps running.", es: "Sin señal. Su reloj sigue corriendo.", hi: "सिग्नल नहीं। आपकी घड़ी चल रही है।", pa: "ਸਿਗਨਲ ਨਹੀਂ। ਤੁਹਾਡੀ ਘੜੀ ਚੱਲ ਰਹੀ ਹੈ।" },
 } as const satisfies Record<string, Record<Lang, string>>;
 

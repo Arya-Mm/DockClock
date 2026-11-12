@@ -24,6 +24,7 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
   const [typed, setTyped] = useState("");
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
+  const [parts, setParts] = useState<{ missing: number; options: { productId: string; title: string; merchant: string; priced: { priceCents: number } }[] } | null>(null);
   const q = `k=${encodeURIComponent(driverKey)}`;
   const base = `/api/driver/${encodeURIComponent(s.loadId)}`;
 
@@ -47,6 +48,20 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
       return j.data;
     } catch { setNotice({ tone: "warn", text: L("offline") }); return undefined; }
     finally { setBusy(false); }
+  }
+
+  async function findParts() {
+    setBusy(true); setNotice(null);
+    try {
+      const r = await fetch(`${base}/parts?${q}`);
+      const j = (await r.json()) as { data?: typeof parts; error?: { message?: string } };
+      if (!r.ok || !j.data) setNotice({ tone: "stop", text: j.error?.message ?? `Request failed (${r.status})` }); else setParts(j.data);
+    } catch { setNotice({ tone: "warn", text: L("offline") }); } finally { setBusy(false); }
+  }
+  async function buyPart(productId: string) {
+    const d = (await post("/parts", { productId })) as { result?: { settlement?: { approveUrl?: string | null } } } | undefined;
+    const url = d?.result?.settlement?.approveUrl;
+    if (url) window.location.assign(url); // carrier approves the carrier-paid order in PayPal
   }
 
   const checkIn = () => post("/checkin", { deviceAt: new Date().toISOString() });
@@ -131,6 +146,18 @@ export function DriverApp({ initial, driverKey }: { initial: DriverSnapshot; dri
           </div>
         </section>
       )}
+
+      {atDock && <section className="rd-voice" aria-label={L("findPart")}>
+        <button className="rd-btn rd-btn-ghost" onClick={findParts} disabled={busy}>{L("findPart")}</button>
+        {parts && parts.missing === 0 && <span className="rd-muted">{L("noPartMissing")}</span>}
+        {parts?.options.map((p) => (
+          <div key={p.productId} className="rd-offer" style={{ borderLeftColor: "var(--rd-fog)" }}>
+            <h2>{L("offerTitle_PART_PURCHASE")}</h2>
+            <span className="rd-muted">{p.title}, {p.merchant}</span>
+            <button className="rd-btn rd-btn-go" onClick={() => buyPart(p.productId)} disabled={busy}>{L("buyFor", { amount: fmtUsd(p.priced.priceCents) })}</button>
+          </div>
+        ))}
+      </section>}
 
       {s.departureMs !== null && !settled && <p className="rd-banner rd-banner-warn">{s.state === "NEEDS_REVIEW" ? L("review") : L("departed")}</p>}
 

@@ -161,7 +161,7 @@ export async function negotiate(loadId: string, nowMs = Date.now()) {
 }
 
 /** Create an engine-priced offer; older open offers on the load are superseded, so only the newest version can be accepted (A3). */
-async function createOffer(load: LoadFull, chosen: PricedOffer, rationale: string, nowMs: number, meta: { mandateId?: string; promptHash?: string; round?: number; source: string; error?: string | null }) {
+export async function createOffer(load: LoadFull, chosen: PricedOffer, rationale: string, nowMs: number, meta: { mandateId?: string; promptHash?: string; round?: number; source: string; error?: string | null }) {
   const version = (await prisma.offer.count({ where: { loadId: load.id } })) + 1;
   await prisma.offer.updateMany({ where: { loadId: load.id, status: "OPEN" }, data: { status: "SUPERSEDED" } });
   const slot = chosen.kind === "SLOT_SWAP_WITH_CREDIT" || chosen.kind === "PRIORITY_SLOT_PURCHASE";
@@ -200,9 +200,15 @@ async function guardOffer(offer: OfferRef, nowMs: number, atExecution: boolean) 
   if (atExecution) current = { version: offer.version, planHash: offer.planHash }; // accepted price is locked
   else {
     const contract = contractOf(load.contractVersion.terms);
-    const now = priceOffer(offer.kind, pricingContext(load, contract, nowMs), contract);
     const latest = await prisma.offer.findFirst({ where: { loadId: offer.loadId }, orderBy: { version: "desc" }, select: { version: true } });
-    current = now && latest ? { version: latest.version, planHash: planHashOf(offer.loadId, offer.kind, now.priceCents, load.contractVersionId, load.evidence.length) } : null;
+    if (offer.kind === "PART_PURCHASE") {
+      // A part's price is the Channel3 quote fixed at creation (re-fetched server-side by parts.ts, never from the client);
+      // staleness here is version-only, and the short TTL bounds quote drift.
+      current = latest ? { version: latest.version, planHash: offer.planHash } : null;
+    } else {
+      const now = priceOffer(offer.kind, pricingContext(load, contract, nowMs), contract);
+      current = now && latest ? { version: latest.version, planHash: planHashOf(offer.loadId, offer.kind, now.priceCents, load.contractVersionId, load.evidence.length) } : null;
+    }
   }
   const verdict = checkMandate({
     mandate, agent: funder, kind: offer.kind, counterparty: load.carrierId, cents: offer.priceCents,
@@ -214,6 +220,8 @@ async function guardOffer(offer: OfferRef, nowMs: number, atExecution: boolean) 
   });
   return { load, funder, mandate, verdict };
 }
+
+export type LoadForOffer = LoadFull;
 
 export type AcceptResult =
   | { status: "ACCEPTED"; offerId: string; idempotent: boolean; settlement: Awaited<ReturnType<typeof settleOffer>> | null }
